@@ -1,4 +1,43 @@
-import { supabase } from './supabase-config.js'; // adjust path as needed
+import { supabase } from './config.js'; 
+
+
+// Make the section switcher visible to inline onclick handlers
+window.showSection = function (id) {
+  document.querySelectorAll(".section").forEach(s => s.classList.add("hidden"));
+  document.getElementById(id)?.classList.remove("hidden");
+
+  document.querySelectorAll(".nav-links button").forEach(b => b.classList.remove("active"));
+  Array.from(document.querySelectorAll(".nav-links button"))
+    .find(b => (b.getAttribute("onclick") || "").includes(`'${id}'`))
+    ?.classList.add("active");
+
+  if (location.hash !== `#${id}`) history.replaceState(null, "", `#${id}`);
+};
+
+// Default section + hash navigation
+window.addEventListener("DOMContentLoaded", () => {
+  const first = (location.hash || "#ingredients").slice(1);
+  window.showSection(first);
+});
+window.addEventListener("hashchange", () => {
+  const id = (location.hash || "#ingredients").slice(1);
+  window.showSection(id);
+});
+
+// Supabase smoke test: try to read first 5 ingredients
+(async () => {
+  const out = document.getElementById("ingredients-out");
+  try {
+    const { data, error } = await supabase.from("ingredients").select("*").limit(5);
+    if (error) throw error;
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    console.error("DB error:", e);
+    document.getElementById("ingredient-alert").textContent =
+      "Error loading data from Supabase (check tables & RLS).";
+    out.textContent = "(no data)";
+  }
+})();
 // // ===== DATA STORAGE =====
 let data = {
     ingredients: [],
