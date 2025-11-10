@@ -247,7 +247,7 @@ tbody tr:hover {
     padding: 15px;
     border: 1px solid #e2e8f0;
 }
-
+.section.hidden { display: none; }
 .breakdown-item {
     display: flex;
     justify-content: space-between;
@@ -433,3 +433,4 @@ tbody tr:hover {
         padding: 8px 10px;
     }
 }
+
