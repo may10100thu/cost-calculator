@@ -1,453 +1,187 @@
-import { supabase } from './config.js'; 
+// script-supabase.js
+// 1) Import Supabase ESM directly (no other <script> tags needed)
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
+// 2) Create client (anon key only)
+const SUPABASE_URL = "https://cvrqblizwcxeoftfjxvg.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2cnFibGl6d2N4ZW9mdGZqeHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3NjA1MzAsImV4cCI6MjA3ODMzNjUzMH0.7c0SH1fk0qTY-iHhfqBdW5yZZ4g9L3n9cy_EWtW4Bxw"
+; // replace with your real anon key
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+console.log("KEY parts:", SUPABASE_ANON_KEY?.split(".").length);   // should print 3
+try {
+  const payload = JSON.parse(atob(SUPABASE_ANON_KEY.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+  console.log("Key ref:", payload.ref); // must be "cvrqblizwcxeoftfjxvg"
+} catch (e) { console.error("Key decode failed", e); }
+// 3) Simple state
+const state = { ingredientSort: "asc", editingId: null };
 
-// Make the section switcher visible to inline onclick handlers
-window.showSection = function (id) {
-  document.querySelectorAll(".section").forEach(s => s.classList.add("hidden"));
+// 4) Helpers
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const fmtMoney = (n) => (isNaN(n) ? "$0.00" : `$${Number(n).toFixed(2)}`);
+
+// 5) Section switching (HTML calls onclick="showSection('...')")
+window.showSection = function showSection(id) {
+  $$(".section").forEach((s) => s.classList.add("hidden"));
   document.getElementById(id)?.classList.remove("hidden");
 
-  document.querySelectorAll(".nav-links button").forEach(b => b.classList.remove("active"));
-  Array.from(document.querySelectorAll(".nav-links button"))
-    .find(b => (b.getAttribute("onclick") || "").includes(`'${id}'`))
+  $$(".nav-links button").forEach((b) => b.classList.remove("active"));
+  $$(".nav-links button")
+    .find((b) => (b.getAttribute("onclick") || "").includes(`'${id}'`))
     ?.classList.add("active");
 
   if (location.hash !== `#${id}`) history.replaceState(null, "", `#${id}`);
 };
 
-// Default section + hash navigation
 window.addEventListener("DOMContentLoaded", () => {
   const first = (location.hash || "#ingredients").slice(1);
   window.showSection(first);
+  loadIngredients().catch(console.error);
 });
-window.addEventListener("hashchange", () => {
-  const id = (location.hash || "#ingredients").slice(1);
-  window.showSection(id);
-});
+window.addEventListener("hashchange", () =>
+  window.showSection((location.hash || "#ingredients").slice(1))
+);
 
-// Supabase smoke test: try to read first 5 ingredients
-(async () => {
-  const out = document.getElementById("ingredients-out");
-  try {
-    const { data, error } = await supabase.from("ingredients").select("*").limit(5);
-    if (error) throw error;
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (e) {
-    console.error("DB error:", e);
-    document.getElementById("ingredient-alert").textContent =
-      "Error loading data from Supabase (check tables & RLS).";
-    out.textContent = "(no data)";
-  }
-})();
-// // ===== DATA STORAGE =====
-let data = {
-    ingredients: [],
-    menuItems: []
+// 6) Ingredients UI actions referenced by HTML
+window.showIngredientForm = function () {
+  $("#ingredient-form-card")?.classList.remove("hidden");
+  $("#submit-btn").textContent = state.editingId ? "Update Ingredient" : "Add Ingredient";
 };
 
-let editingIngredientId = null;
-let editingMenuId = null;
+window.cancelIngredientEdit = function () {
+  $("#ingredient-form-card")?.classList.add("hidden");
+  $("#ingredient-form")?.reset();
+  $("#ingredient-id").value = "";
+  state.editingId = null;
+  $("#submit-btn").textContent = "Add Ingredient";
+};
 
-// Sorting state
-let ingredientSortOrder = 'asc'; // 'asc' or 'desc'
-let menuSortBy = 'name'; // 'name', 'cogs-asc', 'cogs-desc'
+window.toggleIngredientSort = function () {
+  state.ingredientSort = $("#ingredient-sort")?.value || "asc";
+  loadIngredients();
+};
 
-// ===== UTILITY FUNCTIONS =====
-function capitalizeFirstLetter(str) {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-}
+window.saveIngredient = async function (e) {
+  e.preventDefault();
+  const id = $("#ingredient-id").value || null;
+  const name = $("#ingredient-name").value.trim();
+  const quantity = parseFloat($("#ingredient-quantity").value);
+  const unit = $("#ingredient-unit").value;
+  const total_price = parseFloat($("#ingredient-price").value);
 
-// ===== SUPABASE DATA FUNCTIONS =====
-async function loadData() {
-    try {
-        // Load ingredients
-        const { data: ingredientsData, error: ingredientsError } = await supabase
-            .from('ingredients')
-            .select('*')
-            .order('id', { ascending: true });
+  if (!name || !quantity || !unit || isNaN(total_price)) return;
 
-        if (ingredientsError) throw ingredientsError;
+  // derive price_per_unit on client (optional)
+  const price_per_unit = total_price / quantity;
 
-        // Transform to match our data structure
-        data.ingredients = ingredientsData.map(ing => ({
-            id: ing.id,
-            name: ing.name,
-            quantity: parseFloat(ing.quantity),
-            unit: ing.unit,
-            totalPrice: parseFloat(ing.total_price),
-            pricePerUnit: parseFloat(ing.price_per_unit)
-        }));
-
-        // Load menu items
-        const { data: menuItemsData, error: menuItemsError } = await supabase
-            .from('menu_items')
-            .select(`
-                *,
-                menu_item_ingredients (*),
-                menu_item_subrecipes (*)
-            `)
-            .order('id', { ascending: true });
-
-        if (menuItemsError) throw menuItemsError;
-
-        // Transform menu items
-        data.menuItems = menuItemsData.map(item => ({
-            id: item.id,
-            name: item.name,
-            totalCost: parseFloat(item.total_cost),
-            isSubRecipe: item.is_sub_recipe,
-            salePrice: item.sale_price ? parseFloat(item.sale_price) : null,
-            ingredients: item.menu_item_ingredients.map(ing => ({
-                ingredientId: ing.ingredient_id,
-                ingredientName: ing.ingredient_name,
-                quantity: parseFloat(ing.quantity),
-                unit: ing.unit,
-                pricePerUnit: parseFloat(ing.price_per_unit),
-                cost: parseFloat(ing.cost)
-            })),
-            subRecipes: item.menu_item_subrecipes.map(sr => ({
-                subRecipeId: sr.sub_recipe_id,
-                subRecipeName: sr.sub_recipe_name,
-                quantity: parseFloat(sr.quantity),
-                costPerUnit: parseFloat(sr.cost_per_unit),
-                cost: parseFloat(sr.cost)
-            }))
-        }));
-
-        updateAllLists();
-        console.log('Data loaded from Supabase successfully');
-    } catch (error) {
-        console.error('Error loading data:', error);
-        alert('Error loading data from database: ' + error.message);
+  try {
+    if (id) {
+      const { error } = await supabase
+        .from("ingredients")
+        .update({ name, quantity, unit, total_price, price_per_unit })
+        .eq("id", id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from("ingredients")
+        .insert([{ name, quantity, unit, total_price, price_per_unit }]);
+      if (error) throw error;
     }
+    window.cancelIngredientEdit();
+    await loadIngredients();
+    toast("#ingredient-alert", "Saved successfully");
+  } catch (err) {
+    toast("#ingredient-alert", `Save failed: ${err.message}`, true);
+    console.error(err);
+  }
+};
+
+// 7) Load + render ingredients table
+async function loadIngredients() {
+  const ascending = state.ingredientSort !== "desc";
+  const { data, error } = await supabase
+    .from("ingredients")
+    .select("*")
+    .order("name", { ascending });
+
+  if (error) {
+    toast("#ingredient-alert", `Error loading data: ${error.message}`, true);
+    return;
+  }
+
+  const tbody = $("#ingredients-list");
+  if (!tbody) return;
+
+  tbody.innerHTML = (data || [])
+    .map((row) => {
+      const ppu = Number(row.price_per_unit ?? 0);
+      const purchaseInfo = `${Number(row.quantity)} ${row.unit}`;
+      return `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${purchaseInfo} @ ${fmtMoney(Number(row.total_price))}</td>
+          <td>${ppu ? fmtMoney(ppu) + " / " + escapeHtml(row.unit) : "-"}</td>
+          <td>
+            <button class="btn btn-secondary" data-edit="${row.id}">Edit</button>
+            <button class="btn btn-danger" data-del="${row.id}">Delete</button>
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  // wire row buttons
+  tbody.querySelectorAll("[data-edit]").forEach((btn) =>
+    btn.addEventListener("click", () => startEdit(btn.getAttribute("data-edit")))
+  );
+  tbody.querySelectorAll("[data-del]").forEach((btn) =>
+    btn.addEventListener("click", () => delIngredient(btn.getAttribute("data-del")))
+  );
 }
 
-async function saveIngredientToSupabase(ingredient) {
-    try {
-        const dbIngredient = {
-            name: ingredient.name,
-            quantity: ingredient.quantity,
-            unit: ingredient.unit,
-            total_price: ingredient.totalPrice,
-            price_per_unit: ingredient.pricePerUnit
-        };
-
-        if (ingredient.id && ingredient.id > 100000) {
-            // New item (temporary ID), insert
-            const { data, error } = await supabase
-                .from('ingredients')
-                .insert([dbIngredient])
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data.id;
-        } else {
-            // Update existing
-            const { error } = await supabase
-                .from('ingredients')
-                .update(dbIngredient)
-                .eq('id', ingredient.id);
-
-            if (error) throw error;
-            return ingredient.id;
-        }
-    } catch (error) {
-        console.error('Error saving ingredient:', error);
-        throw error;
-    }
+async function startEdit(id) {
+  const { data, error } = await supabase.from("ingredients").select("*").eq("id", id).single();
+  if (error) {
+    toast("#ingredient-alert", `Load failed: ${error.message}`, true);
+    return;
+  }
+  state.editingId = id;
+  $("#ingredient-id").value = id;
+  $("#ingredient-name").value = data.name || "";
+  $("#ingredient-quantity").value = data.quantity ?? "";
+  $("#ingredient-unit").value = data.unit || "";
+  $("#ingredient-price").value = data.total_price ?? "";
+  $("#submit-btn").textContent = "Update Ingredient";
+  $("#ingredient-form-card").classList.remove("hidden");
 }
 
-async function deleteIngredientFromSupabase(id) {
-    try {
-        const { error } = await supabase
-            .from('ingredients')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-    } catch (error) {
-        console.error('Error deleting ingredient:', error);
-        throw error;
-    }
+async function delIngredient(id) {
+  if (!confirm("Delete this ingredient?")) return;
+  try {
+    const { error } = await supabase.from("ingredients").delete().eq("id", id);
+    if (error) throw error;
+    await loadIngredients();
+    toast("#ingredient-alert", "Deleted");
+  } catch (err) {
+    toast("#ingredient-alert", `Delete failed: ${err.message}`, true);
+  }
 }
 
-async function saveMenuItemToSupabase(menuItem) {
-    try {
-        const dbMenuItem = {
-            name: menuItem.name,
-            total_cost: menuItem.totalCost,
-            is_sub_recipe: menuItem.isSubRecipe,
-            sale_price: menuItem.salePrice
-        };
-
-        let menuItemId;
-
-        if (menuItem.id && menuItem.id > 100000) {
-            // New item, insert
-            const { data, error } = await supabase
-                .from('menu_items')
-                .insert([dbMenuItem])
-                .select()
-                .single();
-
-            if (error) throw error;
-            menuItemId = data.id;
-        } else {
-            // Update existing
-            menuItemId = menuItem.id;
-
-            // Delete old ingredients and subrecipes
-            await supabase.from('menu_item_ingredients').delete().eq('menu_item_id', menuItemId);
-            await supabase.from('menu_item_subrecipes').delete().eq('menu_item_id', menuItemId);
-
-            const { error } = await supabase
-                .from('menu_items')
-                .update(dbMenuItem)
-                .eq('id', menuItemId);
-
-            if (error) throw error;
-        }
-
-        // Insert ingredients
-        if (menuItem.ingredients && menuItem.ingredients.length > 0) {
-            const dbIngredients = menuItem.ingredients.map(ing => ({
-                menu_item_id: menuItemId,
-                ingredient_id: ing.ingredientId,
-                ingredient_name: ing.ingredientName,
-                quantity: ing.quantity,
-                unit: ing.unit,
-                price_per_unit: ing.pricePerUnit,
-                cost: ing.cost
-            }));
-
-            const { error } = await supabase
-                .from('menu_item_ingredients')
-                .insert(dbIngredients);
-
-            if (error) throw error;
-        }
-
-        // Insert subrecipes
-        if (menuItem.subRecipes && menuItem.subRecipes.length > 0) {
-            const dbSubRecipes = menuItem.subRecipes.map(sr => ({
-                menu_item_id: menuItemId,
-                sub_recipe_id: sr.subRecipeId,
-                sub_recipe_name: sr.subRecipeName,
-                quantity: sr.quantity,
-                cost_per_unit: sr.costPerUnit,
-                cost: sr.cost
-            }));
-
-            const { error } = await supabase
-                .from('menu_item_subrecipes')
-                .insert(dbSubRecipes);
-
-            if (error) throw error;
-        }
-
-        return menuItemId;
-    } catch (error) {
-        console.error('Error saving menu item:', error);
-        throw error;
-    }
+function toast(sel, msg, isErr = false) {
+  const el = $(sel);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.padding = "8px 12px";
+  el.style.borderRadius = "6px";
+  el.style.margin = "8px 0 16px";
+  el.style.background = isErr ? "#fee2e2" : "#ecfeff";
+  el.style.color = isErr ? "#991b1b" : "#155e75";
 }
 
-async function deleteMenuItemFromSupabase(id) {
-    try {
-        // Foreign keys with CASCADE will auto-delete related records
-        const { error } = await supabase
-            .from('menu_items')
-            .delete()
-            .eq('id', id);
+// 8) Minimal stubs so other HTML handlers don’t crash yet
+window.toggleMenuSort = () => {};
+window.showMenuForm = () => {};
+window.calculateProfit = () => {};
 
-        if (error) throw error;
-    } catch (error) {
-        console.error('Error deleting menu item:', error);
-        throw error;
-    }
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
 }
-
-// ===== UI FUNCTIONS =====
-function showSection(sectionId) {
-    document.querySelectorAll('.section').forEach(section => {
-        section.classList.add('hidden');
-    });
-    document.getElementById(sectionId).classList.remove('hidden');
-
-    document.querySelectorAll('.nav-links button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-
-    if (sectionId === 'profit') {
-        updateProfitMenuDropdown();
-    }
-    if (sectionId === 'menu') {
-        // Always hide the form when navigating to menu section
-        // User can click "Add New Item" to show it
-        hideMenuForm();
-    }
-}
-
-function showAlert(elementId, message, type = 'success') {
-    const alertDiv = document.getElementById(elementId);
-    alertDiv.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-    setTimeout(() => {
-        alertDiv.innerHTML = '';
-    }, 3000);
-}
-
-// ===== INGREDIENTS CRUD =====
-
-function showIngredientForm() {
-    const formCard = document.getElementById('ingredient-form-card');
-    formCard.classList.remove('hidden');
-    document.getElementById('ingredient-form').scrollIntoView({ behavior: 'smooth' });
-}
-
-function hideIngredientForm() {
-    document.getElementById('ingredient-form-card').classList.add('hidden');
-}
-
-function cancelIngredientEdit() {
-    editingIngredientId = null;
-    document.getElementById('ingredient-form').reset();
-    document.getElementById('ingredient-id').value = '';
-    document.getElementById('submit-btn').textContent = 'Add Ingredient';
-    hideIngredientForm();
-}
-
-// Create or Update
-async function saveIngredient(event) {
-    event.preventDefault();
-
-    const quantity = parseFloat(document.getElementById('ingredient-quantity').value);
-    const totalPrice = parseFloat(document.getElementById('ingredient-price').value);
-    const pricePerUnit = totalPrice / quantity;
-
-    const ingredient = {
-        id: editingIngredientId || Date.now(),
-        name: capitalizeFirstLetter(document.getElementById('ingredient-name').value),
-        quantity: quantity,
-        unit: document.getElementById('ingredient-unit').value,
-        totalPrice: totalPrice,
-        pricePerUnit: pricePerUnit
-    };
-
-    try {
-        // Save to Supabase
-        const savedId = await saveIngredientToSupabase(ingredient);
-        ingredient.id = savedId;
-
-        if (editingIngredientId) {
-            // Update existing
-            const index = data.ingredients.findIndex(i => i.id === editingIngredientId);
-            data.ingredients[index] = ingredient;
-            showAlert('ingredient-alert', 'Ingredient updated successfully!');
-            editingIngredientId = null;
-        } else {
-            // Create new
-            data.ingredients.push(ingredient);
-            showAlert('ingredient-alert', 'Ingredient added successfully!');
-        }
-
-        document.getElementById('ingredient-form').reset();
-        document.getElementById('ingredient-id').value = '';
-        document.getElementById('submit-btn').textContent = 'Add Ingredient';
-        hideIngredientForm();
-
-        renderIngredients();
-        updateMenuIngredientDropdowns();
-    } catch (error) {
-        showAlert('ingredient-alert', 'Error saving ingredient: ' + error.message, 'error');
-    }
-}
-
-// Read (Render)
-function renderIngredients() {
-    const list = document.getElementById('ingredients-list');
-
-    if (data.ingredients.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999; padding: 40px;">No ingredients yet. Add your first ingredient above!</td></tr>';
-        return;
-    }
-
-    // Sort ingredients alphabetically
-    const sortedIngredients = [...data.ingredients].sort((a, b) => {
-        if (ingredientSortOrder === 'asc') {
-            return a.name.localeCompare(b.name);
-        } else {
-            return b.name.localeCompare(a.name);
-        }
-    });
-
-    list.innerHTML = sortedIngredients.map(ing => {
-        // Handle old data format (without quantity/totalPrice) and new format
-        let pricePerUnit = ing.pricePerUnit || ing.price || 0;
-        let quantity = ing.quantity || 1;
-        let totalPrice = ing.totalPrice || (pricePerUnit * quantity);
-
-        return `
-            <tr>
-                <td><strong>${ing.name}</strong></td>
-                <td>${quantity} ${ing.unit} @ $${totalPrice.toFixed(2)}</td>
-                <td style="color: #186B28; font-weight: bold;">$${pricePerUnit.toFixed(4)} per ${ing.unit}</td>
-                <td>
-                    <button class="btn btn-secondary" onclick="editIngredient(${ing.id})" style="margin-right: 5px;">Edit</button>
-                    <button class="btn btn-danger" onclick="deleteIngredient(${ing.id})">Delete</button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// Edit
-function editIngredient(id) {
-    const ingredient = data.ingredients.find(i => i.id === id);
-    if (!ingredient) return;
-
-    // Handle old data format
-    let quantity = ingredient.quantity || 1;
-    let totalPrice = ingredient.totalPrice || ingredient.price || 0;
-
-    editingIngredientId = id;
-    document.getElementById('ingredient-id').value = id;
-    document.getElementById('ingredient-name').value = ingredient.name;
-    document.getElementById('ingredient-quantity').value = quantity;
-    document.getElementById('ingredient-unit').value = ingredient.unit;
-    document.getElementById('ingredient-price').value = totalPrice;
-
-    document.getElementById('submit-btn').textContent = 'Update Ingredient';
-
-    // Show the form
-    showIngredientForm();
-}
-
-// Keep old cancelEdit for compatibility if HTML still uses it
-function cancelEdit() {
-    cancelIngredientEdit();
-}
-
-// Delete
-async function deleteIngredient(id) {
-    if (!confirm('Are you sure you want to delete this ingredient?')) return;
-
-    try {
-        await deleteIngredientFromSupabase(id);
-        data.ingredients = data.ingredients.filter(i => i.id !== id);
-        renderIngredients();
-        updateMenuIngredientDropdowns();
-        showAlert('ingredient-alert', 'Ingredient deleted successfully!');
-    } catch (error) {
-        showAlert('ingredient-alert', 'Error deleting ingredient: ' + error.message, 'error');
-    }
-}
-
-// Toggle ingredient sort
-function toggleIngredientSort() {
-    ingredientSortOrder = document.getElementById('ingredient-sort').value;
-    renderIngredients();
-}
-
-// ... [CONTINUED IN NEXT MESSAGE - file too long]
