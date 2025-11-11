@@ -145,9 +145,8 @@ window.showSection = function showSection(id) {
 };
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Check for URL query parameter first, then hash
-  const urlParams = new URLSearchParams(window.location.search);
-  const section = urlParams.get('section') || (location.hash || "#ingredients").slice(1);
+  // Use hash-based navigation (better for static hosting like GitHub Pages)
+  const section = (location.hash || "#ingredients").slice(1);
   window.showSection(section);
   loadIngredients().catch(console.error);
 });
