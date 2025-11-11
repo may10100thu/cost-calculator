@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Orders - Cost Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Cost Manager</h1>
+            <div class="nav-links">
+                <a href="index.html" style="text-decoration: none;"><button>Ingredients</button></a>
+                <a href="index.html?section=menu" style="text-decoration: none;"><button>Menu Items</button></a>
+                <a href="weekly-orders.html" style="text-decoration: none;"><button class="active">Weekly Orders</button></a>
+                <a href="index.html?section=profit" style="text-decoration: none;"><button>Dashboard</button></a>
+            </div>
+        </div>
+
+        <!-- Weekly Orders Section -->
+        <div style="padding: 25px;">
+            <div id="weekly-alert"></div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="margin: 0;">Weekly Ingredient Orders</h2>
+                        <p style="color: #666; margin: 5px 0 0 0; font-size: 14px;">
+                            Update prices for ingredients ordered weekly. Previous prices are shown for comparison.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn btn-primary" onclick="submitWeeklyOrders()" id="submit-weekly-btn">
+                            Submit All Orders
+                        </button>
+                    </div>
+                </div>
+
+                <div id="weekly-orders-container">
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <p>Loading weekly orders...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./script-supabase.js"></script>
+    <script type="module">
+        import { supabase } from './script-supabase.js';
+
+        const $ = (sel) => document.querySelector(sel);
+        const fmtMoney = (n) => (isNaN(n) ? "$0.00" : `$${Number(n).toFixed(2)}`);
+
+        function showNotification(message, type = 'success') {
+            const alert = $('#weekly-alert');
+            alert.className = type === 'error' ? 'alert alert-error' : 'alert alert-success';
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        async function loadWeeklyOrders() {
+            try {
+                const { data: ingredients, error } = await supabase
+                    .from('ingredients')
+                    .select('*')
+                    .eq('is_weekly_order', true)
+                    .eq('is_deleted', false)
+                    .order('name');
+
+                if (error) throw error;
+
+                const container = $('#weekly-orders-container');
+
+                if (!ingredients || ingredients.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <p style="font-size: 16px; margin-bottom: 10px;">No weekly order ingredients found</p>
+                            <p style="font-size: 14px;">Mark ingredients as "Weekly Order" in the Ingredients page to see them here.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left;">Ingredient</th>
+                                <th style="text-align: center; width: 120px;">Qty</th>
+                                <th style="text-align: center; width: 100px;">Unit</th>
+                                <th style="text-align: right; width: 150px;">Last Price</th>
+                                <th style="text-align: right; width: 150px;">New Price ($)</th>
+                                <th style="text-align: center; width: 100px;">Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                for (const ing of ingredients) {
+                    const lastPrice = ing.last_weekly_price || ing.total_price;
+                    const lastDate = ing.last_weekly_date
+                        ? new Date(ing.last_weekly_date).toLocaleDateString()
+                        : 'N/A';
+
+                    html += `
+                        <tr data-ingredient-id="${ing.id}">
+                            <td>
+                                <strong>${ing.name}</strong>
+                                ${ing.semantic_id ? `<br><span style="color: #186B28; font-size: 12px; font-family: monospace;">${ing.semantic_id}</span>` : ''}
+                            </td>
+                            <td style="text-align: center;">${ing.quantity}</td>
+                            <td style="text-align: center;">${ing.unit}</td>
+                            <td style="text-align: right;">
+                                <div style="font-size: 14px;">${fmtMoney(lastPrice)}</div>
+                                <div style="font-size: 11px; color: #666;">${lastDate}</div>
+                            </td>
+                            <td style="text-align: right;">
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="weekly-price-input"
+                                    data-id="${ing.id}"
+                                    data-last-price="${lastPrice}"
+                                    data-quantity="${ing.quantity}"
+                                    value="${ing.total_price}"
+                                    style="width: 100%; text-align: right; padding: 8px; border: 2px solid #e2e8f0; border-radius: 4px;"
+                                    oninput="updatePriceChange(this)"
+                                >
+                            </td>
+                            <td style="text-align: center;">
+                                <div id="change-${ing.id}" style="font-weight: 600; font-size: 14px;">-</div>
+                            </td>
+                        </tr>
+                    `;
+                }
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                container.innerHTML = html;
+
+                // Calculate initial changes
+                document.querySelectorAll('.weekly-price-input').forEach(input => {
+                    updatePriceChange(input);
+                });
+
+            } catch (err) {
+                console.error('Error loading weekly orders:', err);
+                showNotification('Error loading weekly orders: ' + err.message, 'error');
+            }
+        }
+
+        window.updatePriceChange = function(input) {
+            const id = input.dataset.id;
+            const lastPrice = parseFloat(input.dataset.lastPrice);
+            const newPrice = parseFloat(input.value);
+            const changeDiv = document.getElementById(`change-${id}`);
+
+            if (isNaN(newPrice) || newPrice <= 0) {
+                changeDiv.textContent = '-';
+                changeDiv.style.color = '#666';
+                return;
+            }
+
+            const change = newPrice - lastPrice;
+            const changePercent = (change / lastPrice * 100).toFixed(1);
+
+            if (Math.abs(change) < 0.01) {
+                changeDiv.innerHTML = '—';
+                changeDiv.style.color = '#666';
+            } else if (change > 0) {
+                changeDiv.innerHTML = `↑ ${fmtMoney(change)}<br><span style="font-size: 12px;">(+${changePercent}%)</span>`;
+                changeDiv.style.color = '#c00';
+                input.style.borderColor = '#fbb';
+                input.style.background = '#fff5f5';
+            } else {
+                changeDiv.innerHTML = `↓ ${fmtMoney(Math.abs(change))}<br><span style="font-size: 12px;">(${changePercent}%)</span>`;
+                changeDiv.style.color = '#0a0';
+                input.style.borderColor = '#bfb';
+                input.style.background = '#f5fff5';
+            }
+        };
+
+        window.submitWeeklyOrders = async function() {
+            const inputs = document.querySelectorAll('.weekly-price-input');
+            const updates = [];
+            let hasChanges = false;
+
+            for (const input of inputs) {
+                const id = parseInt(input.dataset.id);
+                const newPrice = parseFloat(input.value);
+                const lastPrice = parseFloat(input.dataset.lastPrice);
+                const quantity = parseFloat(input.dataset.quantity);
+
+                if (isNaN(newPrice) || newPrice <= 0) {
+                    showNotification('Please enter valid prices for all ingredients', 'error');
+                    return;
+                }
+
+                if (newPrice !== lastPrice) {
+                    hasChanges = true;
+                }
+
+                updates.push({
+                    id,
+                    newPrice,
+                    quantity,
+                    pricePerUnit: newPrice / quantity
+                });
+            }
+
+            if (!hasChanges) {
+                showNotification('No price changes detected', 'error');
+                return;
+            }
+
+            if (!confirm(`Submit weekly orders for ${updates.length} ingredient(s)?`)) {
+                return;
+            }
+
+            const submitBtn = $('#submit-weekly-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                for (const update of updates) {
+                    // Update ingredient with new price and track last weekly price
+                    const { error: updateError } = await supabase
+                        .from('ingredients')
+                        .update({
+                            total_price: update.newPrice,
+                            price_per_unit: update.pricePerUnit,
+                            last_weekly_price: update.newPrice,
+                            last_weekly_date: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', update.id);
+
+                    if (updateError) throw updateError;
+
+                    // Get ingredient name for history
+                    const { data: ing } = await supabase
+                        .from('ingredients')
+                        .select('name, unit, is_informational')
+                        .eq('id', update.id)
+                        .single();
+
+                    // Log to price history
+                    await supabase
+                        .from('ingredient_price_history')
+                        .insert([{
+                            ingredient_id: update.id,
+                            ingredient_name: ing.name,
+                            quantity: update.quantity,
+                            unit: ing.unit,
+                            total_price: update.newPrice,
+                            price_per_unit: update.pricePerUnit,
+                            is_informational: ing.is_informational
+                        }]);
+                }
+
+                showNotification('Weekly orders submitted successfully!', 'success');
+                await loadWeeklyOrders();
+
+            } catch (err) {
+                console.error('Error submitting weekly orders:', err);
+                showNotification('Error: ' + err.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit All Orders';
+            }
+        };
+
+        // Load orders when page loads
+        window.addEventListener('DOMContentLoaded', loadWeeklyOrders);
+    </script>
+</body>
+</html>
