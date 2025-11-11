@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Menu Item - Cost Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Cost Manager</h1>
+            <div class="nav-links">
+                <a href="index.html" style="text-decoration: none;"><button>Ingredients</button></a>
+                <a href="index.html?section=menu" style="text-decoration: none;"><button>Menu Items</button></a>
+                <a href="weekly-orders.html" style="text-decoration: none;"><button>Weekly Orders</button></a>
+                <a href="index.html?section=profit" style="text-decoration: none;"><button>Dashboard</button></a>
+            </div>
+        </div>
+
+        <!-- Menu Item Form Section -->
+        <div id="menu-form-section" style="padding: 25px;">
+            <div id="menu-alert"></div>
+
+            <div class="card">
+                <div id="menu-form-container">
+                    <div style="padding: 20px; text-align: center; color: #666;">
+                        <p>Loading form...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./script-supabase.js"></script>
+    <script>
+        // Simple initialization - wait for the function to be available
+        setTimeout(async function() {
+            console.log('Attempting to load menu form...');
+
+            // Get menu item ID from URL if editing
+            const urlParams = new URLSearchParams(window.location.search);
+            const menuItemId = urlParams.get('id');
+
+            // Wait for renderMenuForm to be available
+            let attempts = 0;
+            while (!window.renderMenuForm && attempts < 100) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+                attempts++;
+            }
+
+            if (window.renderMenuForm) {
+                try {
+                    console.log('Calling renderMenuForm with ID:', menuItemId);
+                    await window.renderMenuForm(menuItemId ? parseInt(menuItemId) : null);
+                    console.log('Form rendered successfully');
+                } catch (error) {
+                    console.error('Error rendering form:', error);
+                    document.getElementById('menu-form-container').innerHTML = `
+                        <div style="padding: 20px; background: #fee; border: 2px solid #c00; border-radius: 8px;">
+                            <h3 style="color: #c00; margin: 0 0 10px 0;">Error Loading Form</h3>
+                            <p style="margin: 0;">${error.message}</p>
+                            <p style="margin: 10px 0 0 0; font-size: 13px;">
+                                Check the browser console for details.
+                            </p>
+                        </div>
+                    `;
+                }
+            } else {
+                console.error('renderMenuForm not found');
+                document.getElementById('menu-form-container').innerHTML = `
+                    <div style="padding: 20px; background: #fffbe6; border: 2px solid #f90; border-radius: 8px;">
+                        <h3 style="color: #f90; margin: 0 0 10px 0;">Form Not Available</h3>
+                        <p style="margin: 0;">The form could not be loaded. Please refresh the page.</p>
+                    </div>
+                `;
+            }
+        }, 100);
+    </script>
+</body>
+</html>
