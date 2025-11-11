@@ -1,9 +1,6 @@
-// script-supabase.js
-// 1) Import Supabase ESM directly (no other <script> tags needed)
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { unitConverter } from "./unit-converter.js";
 
-// 2) Create client (anon key only)
 const SUPABASE_URL = "https://cvrqblizwcxeoftfjxvg.supabase.co";
 const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2cnFibGl6d2N4ZW9mdGZqeHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3NjA1MzAsImV4cCI6MjA3ODMzNjUzMH0.7c0SH1fk0qTY-iHhfqBdW5yZZ4g9L3n9cy_EWtW4Bxw"
 ; // replace with your real anon key
