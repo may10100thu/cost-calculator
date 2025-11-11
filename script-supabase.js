@@ -1327,56 +1327,18 @@ async function deleteMenuItem(id) {
 // 10) Dashboard Trends Functions
 window.loadTrends = async function() {
   const period = $("#trends-period")?.value || "30";
-  await loadDashboardSummary(period);
-  await loadPriceChanges(period);
-  await loadTopChanges(period);
+  await loadIngredientPriceChanges(period);
+  await loadIngredientTopChanges(period);
+  await loadMenuCogsChanges(period);
+  await loadMenuTopCogs(period);
 };
 
-async function loadDashboardSummary(period) {
-  try {
-    // Check if dashboard elements exist (only on main page)
-    if (!$("#summary-total-ingredients")) return;
+// Removed dashboard summary cards - using detailed dropdowns instead
 
-    // Get current ingredients and menu items (only non-deleted)
-    const { data: ingredients } = await supabase
-      .from("ingredients")
-      .select("*")
-      .eq("is_deleted", false);
-
-    const { data: menuItems } = await supabase
-      .from("menu_items")
-      .select("*")
-      .eq("is_deleted", false);
-
-    // Calculate averages
-    const avgIngredientCost = ingredients?.length > 0
-      ? ingredients.reduce((sum, ing) => sum + (ing.total_price || 0), 0) / ingredients.length
-      : 0;
-
-    const avgMenuCost = menuItems?.length > 0
-      ? menuItems.reduce((sum, item) => sum + (item.total_cost || 0), 0) / menuItems.length
-      : 0;
-
-    const menuItemsWithSales = menuItems?.filter(item => item.sale_price > 0) || [];
-    const avgCOGS = menuItemsWithSales.length > 0
-      ? menuItemsWithSales.reduce((sum, item) => sum + ((item.total_cost / item.sale_price) * 100), 0) / menuItemsWithSales.length
-      : 0;
-
-    // Update summary cards
-    $("#summary-total-ingredients").textContent = ingredients?.length || 0;
-    $("#summary-avg-ingredient-cost").textContent = fmtMoney(avgIngredientCost);
-    $("#summary-total-menu-items").textContent = menuItems?.length || 0;
-    $("#summary-avg-menu-cost").textContent = fmtMoney(avgMenuCost);
-    $("#summary-avg-cogs").textContent = avgCOGS.toFixed(1) + '%';
-  } catch (err) {
-    console.error('Dashboard summary error:', err);
-  }
-}
-
-async function loadPriceChanges(period) {
+async function loadIngredientPriceChanges(period) {
   try {
     // Check if element exists
-    if (!$("#price-changes-list")) return;
+    if (!$("#ingredient-price-changes-list")) return;
 
     const cutoffDate = getCutoffDate(period);
 
@@ -1398,49 +1360,19 @@ async function loadPriceChanges(period) {
       if (!ingredientChanges[record.ingredient_id]) {
         ingredientChanges[record.ingredient_id] = {
           name: record.ingredient_name,
-          type: 'Ingredient',
           records: []
         };
       }
       ingredientChanges[record.ingredient_id].records.push(record);
     });
 
-    // Get menu item price changes
-    let menuQuery = supabase
-      .from("menu_item_price_history")
-      .select("*")
-      .order("recorded_at", { ascending: true });
+    const allChanges = Object.values(ingredientChanges).filter(item => item.records.length > 0);
 
-    if (cutoffDate) {
-      menuQuery = menuQuery.gte("recorded_at", cutoffDate.toISOString());
-    }
-
-    const { data: menuHistory } = await menuQuery;
-
-    // Group by menu item
-    const menuChanges = {};
-    (menuHistory || []).forEach(record => {
-      if (!menuChanges[record.menu_item_id]) {
-        menuChanges[record.menu_item_id] = {
-          name: record.menu_item_name,
-          type: 'Menu Item',
-          records: []
-        };
-      }
-      menuChanges[record.menu_item_id].records.push(record);
-    });
-
-    // Combine and format
-    const allChanges = [
-      ...Object.values(ingredientChanges),
-      ...Object.values(menuChanges)
-    ].filter(item => item.records.length > 0);
-
-    const tbody = $("#price-changes-list");
+    const tbody = $("#ingredient-price-changes-list");
     if (!tbody) return;
 
     if (allChanges.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No price changes in this period. Add or update items to track trends.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No ingredient price changes in this period</td></tr>';
       return;
     }
 
@@ -1448,8 +1380,8 @@ async function loadPriceChanges(period) {
       const firstRecord = item.records[0];
       const lastRecord = item.records[item.records.length - 1];
 
-      const startPrice = item.type === 'Ingredient' ? firstRecord.total_price : firstRecord.total_cost;
-      const currentPrice = item.type === 'Ingredient' ? lastRecord.total_price : lastRecord.total_cost;
+      const startPrice = firstRecord.total_price;
+      const currentPrice = lastRecord.total_price;
       const change = currentPrice - startPrice;
       const changePercent = startPrice > 0 ? ((change / startPrice) * 100).toFixed(1) : 0;
 
@@ -1459,7 +1391,6 @@ async function loadPriceChanges(period) {
       return `
         <tr>
           <td><strong>${escapeHtml(item.name)}</strong></td>
-          <td>${item.type}</td>
           <td>${item.records.length}</td>
           <td>${fmtMoney(startPrice)}</td>
           <td>${fmtMoney(currentPrice)}</td>
@@ -1468,18 +1399,18 @@ async function loadPriceChanges(period) {
       `;
     }).join('');
   } catch (err) {
-    showNotification(`Failed to load price changes: ${err.message}`, 'error');
+    console.error('Failed to load ingredient price changes:', err);
   }
 }
 
-async function loadTopChanges(period) {
+async function loadIngredientTopChanges(period) {
   try {
     // Check if element exists
-    if (!$("#top-changes-list")) return;
+    if (!$("#ingredient-top-changes-list")) return;
 
     const cutoffDate = getCutoffDate(period);
 
-    // Get all price changes (same logic as above but just top 10)
+    // Get ingredient price changes
     let ingredientQuery = supabase
       .from("ingredient_price_history")
       .select("*")
@@ -1495,13 +1426,66 @@ async function loadTopChanges(period) {
       if (!ingredientChanges[record.ingredient_id]) {
         ingredientChanges[record.ingredient_id] = {
           name: record.ingredient_name,
-          type: 'Ingredient',
           records: []
         };
       }
       ingredientChanges[record.ingredient_id].records.push(record);
     });
 
+    // Calculate changes and sort by absolute change amount
+    const topChanges = Object.values(ingredientChanges)
+      .filter(item => item.records.length > 1)
+      .map(item => {
+        const firstRecord = item.records[0];
+        const lastRecord = item.records[item.records.length - 1];
+        const startPrice = firstRecord.total_price;
+        const currentPrice = lastRecord.total_price;
+        const change = currentPrice - startPrice;
+        const changePercent = startPrice > 0 ? ((change / startPrice) * 100) : 0;
+
+        return {
+          ...item,
+          change,
+          changePercent,
+          absChange: Math.abs(change)
+        };
+      })
+      .sort((a, b) => b.absChange - a.absChange)
+      .slice(0, 10); // Top 10
+
+    const tbody = $("#ingredient-top-changes-list");
+    if (!tbody) return;
+
+    if (topChanges.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #999;">Not enough data to show changes. Update ingredients multiple times to track trends.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = topChanges.map(item => {
+      const changeClass = item.change > 0 ? 'price-increase' : item.change < 0 ? 'price-decrease' : 'price-stable';
+      const changeSymbol = item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→';
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.name)}</strong></td>
+          <td class="${changeClass}">${changeSymbol} ${fmtMoney(item.absChange)}</td>
+          <td class="${changeClass}">${changeSymbol} ${item.changePercent.toFixed(1)}%</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load ingredient top changes:', err);
+  }
+}
+
+async function loadMenuCogsChanges(period) {
+  try {
+    // Check if element exists
+    if (!$("#menu-cogs-changes-list")) return;
+
+    const cutoffDate = getCutoffDate(period);
+
+    // Get menu item COGS% changes
     let menuQuery = supabase
       .from("menu_item_price_history")
       .select("*")
@@ -1517,43 +1501,36 @@ async function loadTopChanges(period) {
       if (!menuChanges[record.menu_item_id]) {
         menuChanges[record.menu_item_id] = {
           name: record.menu_item_name,
-          type: 'Menu Item',
           records: []
         };
       }
       menuChanges[record.menu_item_id].records.push(record);
     });
 
-    // Calculate changes and sort by absolute change amount
-    const allChanges = [
-      ...Object.values(ingredientChanges),
-      ...Object.values(menuChanges)
-    ].filter(item => item.records.length > 1)
-     .map(item => {
-       const firstRecord = item.records[0];
-       const lastRecord = item.records[item.records.length - 1];
-       const startPrice = item.type === 'Ingredient' ? firstRecord.total_price : firstRecord.total_cost;
-       const currentPrice = item.type === 'Ingredient' ? lastRecord.total_price : lastRecord.total_cost;
-       const change = currentPrice - startPrice;
-       const changePercent = startPrice > 0 ? ((change / startPrice) * 100) : 0;
+    // Calculate COGS% changes
+    const allChanges = Object.values(menuChanges)
+      .filter(item => item.records.length > 1)
+      .map(item => {
+        const firstRecord = item.records[0];
+        const lastRecord = item.records[item.records.length - 1];
+        const startCogs = firstRecord.cogs_percent;
+        const currentCogs = lastRecord.cogs_percent;
+        const change = currentCogs - startCogs;
 
-       return {
-         ...item,
-         startPrice,
-         currentPrice,
-         change,
-         changePercent,
-         absChange: Math.abs(change)
-       };
-     })
-     .sort((a, b) => b.absChange - a.absChange)
-     .slice(0, 10); // Top 10
+        return {
+          ...item,
+          startCogs,
+          currentCogs,
+          change
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-    const tbody = $("#top-changes-list");
+    const tbody = $("#menu-cogs-changes-list");
     if (!tbody) return;
 
     if (allChanges.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">Not enough data to show changes. Update items multiple times to track trends.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">Not enough data to show COGS% changes. Update menu items multiple times to track trends.</td></tr>';
       return;
     }
 
@@ -1564,14 +1541,89 @@ async function loadTopChanges(period) {
       return `
         <tr>
           <td><strong>${escapeHtml(item.name)}</strong></td>
-          <td>${item.type}</td>
-          <td class="${changeClass}">${changeSymbol} ${fmtMoney(item.absChange)}</td>
-          <td class="${changeClass}">${changeSymbol} ${item.changePercent.toFixed(1)}%</td>
+          <td>${item.records.length}</td>
+          <td>${item.startCogs.toFixed(1)}%</td>
+          <td>${item.currentCogs.toFixed(1)}%</td>
+          <td class="${changeClass}">${changeSymbol} ${Math.abs(item.change).toFixed(1)}%</td>
         </tr>
       `;
     }).join('');
   } catch (err) {
-    showNotification(`Failed to load top changes: ${err.message}`, 'error');
+    console.error('Failed to load menu COGS% changes:', err);
+  }
+}
+
+async function loadMenuTopCogs(period) {
+  try {
+    // Check if element exists
+    if (!$("#menu-top-cogs-list")) return;
+
+    const cutoffDate = getCutoffDate(period);
+
+    // Get menu item COGS% changes
+    let menuQuery = supabase
+      .from("menu_item_price_history")
+      .select("*")
+      .order("recorded_at", { ascending: true });
+
+    if (cutoffDate) {
+      menuQuery = menuQuery.gte("recorded_at", cutoffDate.toISOString());
+    }
+
+    const { data: menuHistory } = await menuQuery;
+    const menuChanges = {};
+    (menuHistory || []).forEach(record => {
+      if (!menuChanges[record.menu_item_id]) {
+        menuChanges[record.menu_item_id] = {
+          name: record.menu_item_name,
+          records: []
+        };
+      }
+      menuChanges[record.menu_item_id].records.push(record);
+    });
+
+    // Calculate COGS% changes and sort by absolute change
+    const topChanges = Object.values(menuChanges)
+      .filter(item => item.records.length > 1)
+      .map(item => {
+        const firstRecord = item.records[0];
+        const lastRecord = item.records[item.records.length - 1];
+        const startCogs = firstRecord.cogs_percent;
+        const currentCogs = lastRecord.cogs_percent;
+        const change = currentCogs - startCogs;
+
+        return {
+          ...item,
+          change,
+          absChange: Math.abs(change)
+        };
+      })
+      .sort((a, b) => b.absChange - a.absChange)
+      .slice(0, 10); // Top 10
+
+    const tbody = $("#menu-top-cogs-list");
+    if (!tbody) return;
+
+    if (topChanges.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #999;">Not enough data to show COGS% changes. Update menu items multiple times to track trends.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = topChanges.map(item => {
+      const changeClass = item.change > 0 ? 'price-increase' : item.change < 0 ? 'price-decrease' : 'price-stable';
+      const changeSymbol = item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→';
+      const impact = item.change > 0 ? 'Margin decreased' : item.change < 0 ? 'Margin improved' : 'No change';
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.name)}</strong></td>
+          <td class="${changeClass}">${changeSymbol} ${Math.abs(item.change).toFixed(1)}%</td>
+          <td class="${changeClass}">${impact}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load menu top COGS% changes:', err);
   }
 }
 
@@ -1590,8 +1642,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   if ($("#menu-items-list")) {
     await loadMenuItems();
   }
-  // Only load dashboard if dashboard exists
-  if ($("#summary-total-ingredients")) {
+  // Only load dashboard if dashboard exists (check for ingredient price changes list)
+  if ($("#ingredient-price-changes-list")) {
     await loadTrends();
   }
 });
