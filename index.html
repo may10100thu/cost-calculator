@@ -206,90 +206,105 @@
 
         <!-- Dashboard Section -->
         <div id="profit" class="section hidden">
-            <!-- Overall Summary -->
             <div class="card">
-                <h2>Overall Cost Trends Dashboard</h2>
-                <p style="color: #666; margin-bottom: 20px;">Track average costs and pricing trends across all ingredients and menu items.</p>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Time Period</label>
-                        <select id="trends-period" onchange="loadTrends()">
-                            <option value="7">Last Week</option>
-                            <option value="14">Last 2 Weeks</option>
-                            <option value="30" selected>Last Month</option>
-                            <option value="60">Last 2 Months</option>
-                            <option value="90">Last 3 Months</option>
-                            <option value="180">Last 6 Months</option>
-                            <option value="365">Last Year</option>
-                            <option value="730">Last 2 Years</option>
-                            <option value="1825">Last 5 Years</option>
-                            <option value="3650">Last 10 Years</option>
-                            <option value="all">All Time</option>
-                        </select>
-                    </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    
+                    <select id="trends-period" onchange="loadTrends()" style="padding: 6px 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 13px;">
+                        <option value="7">Last Week</option>
+                        <option value="14">Last 2 Weeks</option>
+                        <option value="30" selected>Last Month</option>
+                        <option value="60">Last 2 Months</option>
+                        <option value="90">Last 3 Months</option>
+                        <option value="180">Last 6 Months</option>
+                        <option value="365">Last Year</option>
+                        <option value="all">All Time</option>
+                    </select>
                 </div>
 
-                <!-- Summary Cards -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
-                    <div class="summary-card">
-                        <div class="summary-label">Total Ingredients</div>
-                        <div class="summary-value" id="summary-total-ingredients">0</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-label">Avg Ingredient Cost</div>
-                        <div class="summary-value" id="summary-avg-ingredient-cost">$0.00</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-label">Total Menu Items</div>
-                        <div class="summary-value" id="summary-total-menu-items">0</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-label">Avg Menu Item Cost</div>
-                        <div class="summary-value" id="summary-avg-menu-cost">$0.00</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-label">Avg COGS%</div>
-                        <div class="summary-value" id="summary-avg-cogs">0%</div>
-                    </div>
+                <!-- Ingredients Section -->
+                <div style="margin-bottom: 40px;">
+                    <h3 style="color: #186B28; font-size: 18px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #186B28;">📊 Ingredient Price Trends</h3>
+
+                    <details style="margin-bottom: 15px;" open>
+                        <summary style="cursor: pointer; padding: 10px; background: #f7fafc; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                            Price Changes in Selected Period
+                        </summary>
+                        <div class="table-container" style="margin-top: 10px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Ingredient</th>
+                                        <th>Updates</th>
+                                        <th>Starting Price</th>
+                                        <th>Current Price</th>
+                                        <th>Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ingredient-price-changes-list"></tbody>
+                            </table>
+                        </div>
+                    </details>
+
+                    <details style="margin-bottom: 15px;">
+                        <summary style="cursor: pointer; padding: 10px; background: #f7fafc; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                            Biggest Price Changes
+                        </summary>
+                        <div class="table-container" style="margin-top: 10px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Ingredient</th>
+                                        <th>Change Amount</th>
+                                        <th>% Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ingredient-top-changes-list"></tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
 
-                <!-- Price Change Analysis -->
-                <div style="margin-top: 30px;">
-                    <h3 style="color: #2d3748; font-size: 18px; margin-bottom: 15px;">Price Changes in Selected Period</h3>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Item</th>
-                                    <th>Type</th>
-                                    <th>Updates</th>
-                                    <th>Starting Price</th>
-                                    <th>Current Price</th>
-                                    <th>Change</th>
-                                </tr>
-                            </thead>
-                            <tbody id="price-changes-list"></tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- Menu Items Section -->
+                <div>
+                    <h3 style="color: #2563eb; font-size: 18px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #2563eb;">🍽️ Menu Item COGS% Trends</h3>
 
-                <!-- Top Cost Changes -->
-                <div style="margin-top: 30px;">
-                    <h3 style="color: #2d3748; font-size: 18px; margin-bottom: 15px;">Biggest Price Changes</h3>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Item</th>
-                                    <th>Type</th>
-                                    <th>Change Amount</th>
-                                    <th>% Change</th>
-                                </tr>
-                            </thead>
-                            <tbody id="top-changes-list"></tbody>
-                        </table>
-                    </div>
+                    <details style="margin-bottom: 15px;" open>
+                        <summary style="cursor: pointer; padding: 10px; background: #f7fafc; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                            COGS% Changes in Selected Period
+                        </summary>
+                        <div class="table-container" style="margin-top: 10px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Menu Item</th>
+                                        <th>Updates</th>
+                                        <th>Starting COGS%</th>
+                                        <th>Current COGS%</th>
+                                        <th>Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="menu-cogs-changes-list"></tbody>
+                            </table>
+                        </div>
+                    </details>
+
+                    <details style="margin-bottom: 15px;">
+                        <summary style="cursor: pointer; padding: 10px; background: #f7fafc; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                            Biggest COGS% Changes
+                        </summary>
+                        <div class="table-container" style="margin-top: 10px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Menu Item</th>
+                                        <th>COGS% Change</th>
+                                        <th>Impact</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="menu-top-cogs-list"></tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
             </div>
         </div>
