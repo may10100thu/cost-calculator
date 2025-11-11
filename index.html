@@ -14,6 +14,7 @@
             <div class="nav-links">
                 <button onclick="showSection('ingredients')" class="active">Ingredients</button>
                 <button onclick="showSection('menu')">Menu Items</button>
+                <a href="weekly-orders.html" style="text-decoration: none;"><button>Weekly Orders</button></a>
                 <button onclick="showSection('profit')">Dashboard</button>
             </div>
         </div>
@@ -59,8 +60,73 @@
                         </div>
                         <div class="form-group">
                             <label>Total Price ($) *</label>
-                            <input type="number" id="ingredient-price" step="0.01" min="0" required placeholder="e.g., 7.99, 29.99">
+                            <input type="number" id="ingredient-price" step="0.01" min="0" required placeholder="e.g., 7.99, 29.99 (or 0 for informational)">
                         </div>
+                    </div>
+                    <div class="form-row" style="margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #666;">
+                                <input type="checkbox" id="ingredient-informational" style="width: auto;">
+                                <span>Always informational (never affects costs)</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #186B28; font-weight: 600;">
+                                <input type="checkbox" id="ingredient-weekly-order" style="width: auto;">
+                                <span>Weekly Order Item</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <h3 style="color: #2d3748; font-size: 16px; margin: 20px 0 10px 0; padding-top: 15px; border-top: 2px solid #e2e8f0;">Semantic ID (Optional)</h3>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Format: CATEGORY-SUBCATEGORY-DESCRIPTOR-TAG (e.g., VEG-FRSH-BROC-001)</p>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Category</label>
+                            <select id="ingredient-category" onchange="generateIngredientSemanticId()">
+                                <option value="">No ID</option>
+                                <option value="VEG">VEG - Vegetables</option>
+                                <option value="PROT">PROT - Proteins/Meats</option>
+                                <option value="DAIRY">DAIRY - Dairy Products</option>
+                                <option value="GRAIN">GRAIN - Grains/Cereals</option>
+                                <option value="SPICE">SPICE - Spices/Herbs</option>
+                                <option value="OIL">OIL - Oils/Fats</option>
+                                <option value="SAUCE">SAUCE - Sauces/Condiments</option>
+                                <option value="SEAFD">SEAFD - Seafood</option>
+                                <option value="BAKE">BAKE - Baking Supplies</option>
+                                <option value="BVRG">BVRG - Beverages</option>
+                                <option value="SNACK">SNACK - Snacks</option>
+                                <option value="OTHER">OTHER - Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sub-Category</label>
+                            <select id="ingredient-subcategory" onchange="generateIngredientSemanticId()">
+                                <option value="">Select</option>
+                                <option value="FRSH">FRSH - Fresh</option>
+                                <option value="FRZN">FRZN - Frozen</option>
+                                <option value="CANN">CANN - Canned</option>
+                                <option value="DRY">DRY - Dried</option>
+                                <option value="PICKL">PICKL - Pickled</option>
+                                <option value="RAW">RAW - Raw</option>
+                                <option value="PROC">PROC - Processed</option>
+                                <option value="ORG">ORG - Organic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Descriptor (4 chars)</label>
+                            <input type="text" id="ingredient-descriptor" maxlength="4" placeholder="BROC" style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase(); generateIngredientSemanticId()">
+                        </div>
+                        <div class="form-group">
+                            <label>Tag Number (3 digits)</label>
+                            <input type="text" id="ingredient-tag" maxlength="3" placeholder="001" oninput="generateIngredientSemanticId()">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Generated Semantic ID</label>
+                        <input type="text" id="ingredient-semantic-id-display" readonly style="background: #f7fafc; font-weight: 600; color: #186B28;">
                     </div>
                     <div class="actions">
                         <button type="button" class="btn btn-secondary" onclick="cancelIngredientEdit()">Cancel</button>
@@ -77,6 +143,7 @@
                             <option value="asc">Sort A-Z</option>
                             <option value="desc">Sort Z-A</option>
                         </select>
+                        <button class="btn btn-primary" onclick="exportIngredientsCSV()" title="Export to CSV">Export CSV</button>
                         <button class="btn btn-primary" onclick="showIngredientForm()">Add New Ingredient</button>
                     </div>
                 </div>
@@ -84,6 +151,7 @@
                     <table>
                         <thead>
                             <tr>
+                                <th>Semantic ID</th>
                                 <th>Name</th>
                                 <th>Purchase Info</th>
                                 <th>Price per Unit</th>
@@ -113,7 +181,8 @@
                             <option value="cogs-asc">COGS% Low to High</option>
                             <option value="cogs-desc">COGS% High to Low</option>
                         </select>
-                        <button class="btn btn-primary" onclick="showMenuForm()">Add New Item</button>
+                        <button class="btn btn-primary" onclick="exportMenuItemsCSV()" title="Export to CSV">Export CSV</button>
+                        <a href="add-menu-item.html" style="text-decoration: none;"><button class="btn btn-primary">Add New Item</button></a>
                     </div>
                 </div>
                 <div class="table-container">
@@ -121,6 +190,7 @@
                         <thead>
                             <tr>
                                 <th style="width: 40px;"></th>
+                                <th style="width: 180px;">Semantic ID</th>
                                 <th>Menu Item</th>
                                 <th style="width: 120px;">Cost</th>
                                 <th style="width: 120px;">Sale Price</th>
@@ -134,54 +204,91 @@
             </div>
         </div>
 
-        <!-- Profit Calculator Section -->
+        <!-- Dashboard Section -->
         <div id="profit" class="section hidden">
+            <!-- Overall Summary -->
             <div class="card">
-                <h2>Profit Calculator</h2>
-                <p style="color: #666; margin-bottom: 20px;">Select a menu item and enter your selling price to calculate profit and margins.</p>
+                <h2>Overall Cost Trends Dashboard</h2>
+                <p style="color: #666; margin-bottom: 20px;">Track average costs and pricing trends across all ingredients and menu items.</p>
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Select Menu Item *</label>
-                        <select id="profit-menu-select" onchange="calculateProfit()">
-                            <option value="">Choose a menu item</option>
+                        <label>Time Period</label>
+                        <select id="trends-period" onchange="loadTrends()">
+                            <option value="7">Last Week</option>
+                            <option value="14">Last 2 Weeks</option>
+                            <option value="30" selected>Last Month</option>
+                            <option value="60">Last 2 Months</option>
+                            <option value="90">Last 3 Months</option>
+                            <option value="180">Last 6 Months</option>
+                            <option value="365">Last Year</option>
+                            <option value="730">Last 2 Years</option>
+                            <option value="1825">Last 5 Years</option>
+                            <option value="3650">Last 10 Years</option>
+                            <option value="all">All Time</option>
                         </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Selling Price ($) *</label>
-                        <input type="number" id="profit-selling-price" step="0.01" min="0" placeholder="0.00" oninput="calculateProfit()">
                     </div>
                 </div>
 
-                <div id="profit-results" style="display: none;">
-                    <div class="profit-display">
-                        <h3>Profit Analysis</h3>
+                <!-- Summary Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
+                    <div class="summary-card">
+                        <div class="summary-label">Total Ingredients</div>
+                        <div class="summary-value" id="summary-total-ingredients">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Avg Ingredient Cost</div>
+                        <div class="summary-value" id="summary-avg-ingredient-cost">$0.00</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Total Menu Items</div>
+                        <div class="summary-value" id="summary-total-menu-items">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Avg Menu Item Cost</div>
+                        <div class="summary-value" id="summary-avg-menu-cost">$0.00</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Avg COGS%</div>
+                        <div class="summary-value" id="summary-avg-cogs">0%</div>
+                    </div>
+                </div>
 
-                        <div id="profit-ingredients-breakdown" style="margin: 15px 0;"></div>
+                <!-- Price Change Analysis -->
+                <div style="margin-top: 30px;">
+                    <h3 style="color: #2d3748; font-size: 18px; margin-bottom: 15px;">Price Changes in Selected Period</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Updates</th>
+                                    <th>Starting Price</th>
+                                    <th>Current Price</th>
+                                    <th>Change</th>
+                                </tr>
+                            </thead>
+                            <tbody id="price-changes-list"></tbody>
+                        </table>
+                    </div>
+                </div>
 
-                        <div class="profit-summary">
-                            <div class="profit-item">
-                                <span>Total Cost:</span>
-                                <span id="profit-total-cost" class="profit-value cost">$0.00</span>
-                            </div>
-                            <div class="profit-item">
-                                <span>Selling Price:</span>
-                                <span id="profit-selling" class="profit-value">$0.00</span>
-                            </div>
-                            <div class="profit-item">
-                                <span>Profit:</span>
-                                <span id="profit-amount" class="profit-value">$0.00</span>
-                            </div>
-                            <div class="profit-item">
-                                <span>Profit Margin:</span>
-                                <span id="profit-margin" class="profit-value large">0%</span>
-                            </div>
-                            <div class="profit-item">
-                                <span>Food Cost %:</span>
-                                <span id="food-cost-percent" class="profit-value">0%</span>
-                            </div>
-                        </div>
+                <!-- Top Cost Changes -->
+                <div style="margin-top: 30px;">
+                    <h3 style="color: #2d3748; font-size: 18px; margin-bottom: 15px;">Biggest Price Changes</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Change Amount</th>
+                                    <th>% Change</th>
+                                </tr>
+                            </thead>
+                            <tbody id="top-changes-list"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
