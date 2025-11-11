@@ -74,6 +74,24 @@ body {
     border-bottom: 1px solid #e2e8f0;
 }
 
+#ingredient-form-card {
+    max-width: 900px;
+    margin: 20px auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-bottom: none;
+    background: linear-gradient(to bottom, #f7fafc 0%, #ffffff 100%);
+    border-left: 4px solid #186B28;
+}
+
+#ingredient-form-card h2 {
+    color: #186B28;
+    font-size: 20px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
 #menu-form-card {
     max-width: 900px;
     margin: 20px auto;
@@ -498,6 +516,50 @@ tbody tr:hover {
     background: #f7fafc;
 }
 
+/* ===== SUMMARY CARDS ===== */
+.summary-card {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.summary-card:hover {
+    border-color: #186B28;
+    box-shadow: 0 4px 12px rgba(24, 107, 40, 0.15);
+}
+
+.summary-label {
+    font-size: 13px;
+    color: #718096;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #186B28;
+}
+
+.price-increase {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.price-decrease {
+    color: #48bb78;
+    font-weight: 600;
+}
+
+.price-stable {
+    color: #718096;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
     .header {
@@ -557,4 +619,3 @@ tbody tr:hover {
         padding: 8px 10px;
     }
 }
-
