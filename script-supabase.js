@@ -641,30 +641,53 @@ window.renderMenuForm = async function renderMenuForm(menuItemId = null) {
           <label>Category</label>
           <select id="menu-category" onchange="generateMenuSemanticId()">
             <option value="">No ID</option>
-            <option value="MAIN" ${existingData?.category_code === 'MAIN' ? 'selected' : ''}>MAIN - Main Course</option>
             <option value="APP" ${existingData?.category_code === 'APP' ? 'selected' : ''}>APP - Appetizer</option>
+            <option value="ENTRE" ${existingData?.category_code === 'ENTRE' ? 'selected' : ''}>ENTRE - Entree</option>
+            <option value="MAIN" ${existingData?.category_code === 'MAIN' ? 'selected' : ''}>MAIN - Main Course</option>
             <option value="SIDE" ${existingData?.category_code === 'SIDE' ? 'selected' : ''}>SIDE - Side Dish</option>
             <option value="DESS" ${existingData?.category_code === 'DESS' ? 'selected' : ''}>DESS - Dessert</option>
-            <option value="BVRG" ${existingData?.category_code === 'BVRG' ? 'selected' : ''}>BVRG - Beverage</option>
-            <option value="SALAD" ${existingData?.category_code === 'SALAD' ? 'selected' : ''}>SALAD - Salad</option>
+            <option value="BVRG" ${existingData?.category_code === 'BVRG' ? 'selected' : ''}>BVRG - Drinks/Beverage</option>
+            <option value="BENTO" ${existingData?.category_code === 'BENTO' ? 'selected' : ''}>BENTO - Bento Styles</option>
+            <option value="CARB" ${existingData?.category_code === 'CARB' ? 'selected' : ''}>CARB - Carbohydrates</option>
             <option value="SOUP" ${existingData?.category_code === 'SOUP' ? 'selected' : ''}>SOUP - Soup</option>
+            <option value="SALAD" ${existingData?.category_code === 'SALAD' ? 'selected' : ''}>SALAD - Salad</option>
+            <option value="BRKFT" ${existingData?.category_code === 'BRKFT' ? 'selected' : ''}>BRKFT - Breakfast</option>
+            <option value="SNACK" ${existingData?.category_code === 'SNACK' ? 'selected' : ''}>SNACK - Snacks</option>
+            <option value="COMBO" ${existingData?.category_code === 'COMBO' ? 'selected' : ''}>COMBO - Combo/Set</option>
+            <option value="SEASN" ${existingData?.category_code === 'SEASN' ? 'selected' : ''}>SEASN - Seasonal</option>
+            <option value="KIDS" ${existingData?.category_code === 'KIDS' ? 'selected' : ''}>KIDS - Kids Menu</option>
+            <option value="RICE" ${existingData?.category_code === 'RICE' ? 'selected' : ''}>RICE - Rice Dishes</option>
+            <option value="NOODL" ${existingData?.category_code === 'NOODL' ? 'selected' : ''}>NOODL - Noodles</option>
             <option value="SUB" ${existingData?.category_code === 'SUB' ? 'selected' : ''}>SUB - Sub-Recipe/Component</option>
             <option value="OTHER" ${existingData?.category_code === 'OTHER' ? 'selected' : ''}>OTHER - Other</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Sub-Category</label>
+          <label>Sub-Category (Cooking Method)</label>
           <select id="menu-subcategory" onchange="generateMenuSemanticId()">
             <option value="">Select</option>
-            <option value="SOUP" ${existingData?.subcategory_code === 'SOUP' ? 'selected' : ''}>SOUP - Soup</option>
-            <option value="NOODL" ${existingData?.subcategory_code === 'NOODL' ? 'selected' : ''}>NOODL - Noodles</option>
-            <option value="RICE" ${existingData?.subcategory_code === 'RICE' ? 'selected' : ''}>RICE - Rice Dish</option>
-            <option value="CURRY" ${existingData?.subcategory_code === 'CURRY' ? 'selected' : ''}>CURRY - Curry</option>
-            <option value="GRILL" ${existingData?.subcategory_code === 'GRILL' ? 'selected' : ''}>GRILL - Grilled</option>
-            <option value="FRY" ${existingData?.subcategory_code === 'FRY' ? 'selected' : ''}>FRY - Fried</option>
+            <option value="RAW" ${existingData?.subcategory_code === 'RAW' ? 'selected' : ''}>RAW - Raw</option>
+            <option value="DPFRY" ${existingData?.subcategory_code === 'DPFRY' ? 'selected' : ''}>DPFRY - Deep-Fried</option>
             <option value="STEAM" ${existingData?.subcategory_code === 'STEAM' ? 'selected' : ''}>STEAM - Steamed</option>
+            <option value="ROAST" ${existingData?.subcategory_code === 'ROAST' ? 'selected' : ''}>ROAST - Roasted</option>
+            <option value="STFRY" ${existingData?.subcategory_code === 'STFRY' ? 'selected' : ''}>STFRY - Stir-Fries</option>
+            <option value="ASMBLD" ${existingData?.subcategory_code === 'ASMBLD' ? 'selected' : ''}>ASMBLD - Assembled</option>
+            <option value="BRASE" ${existingData?.subcategory_code === 'BRASE' ? 'selected' : ''}>BRASE - Braised</option>
+            <option value="GRILL" ${existingData?.subcategory_code === 'GRILL' ? 'selected' : ''}>GRILL - Grilled</option>
+            <option value="PANFRY" ${existingData?.subcategory_code === 'PANFRY' ? 'selected' : ''}>PANFRY - Pan-Fried</option>
             <option value="BAKE" ${existingData?.subcategory_code === 'BAKE' ? 'selected' : ''}>BAKE - Baked</option>
-            <option value="RAW" ${existingData?.subcategory_code === 'RAW' ? 'selected' : ''}>RAW - Raw/Fresh</option>
+            <option value="BOIL" ${existingData?.subcategory_code === 'BOIL' ? 'selected' : ''}>BOIL - Boiled</option>
+            <option value="POACH" ${existingData?.subcategory_code === 'POACH' ? 'selected' : ''}>POACH - Poached</option>
+            <option value="SAUTE" ${existingData?.subcategory_code === 'SAUTE' ? 'selected' : ''}>SAUTE - Sautéed</option>
+            <option value="SMOKE" ${existingData?.subcategory_code === 'SMOKE' ? 'selected' : ''}>SMOKE - Smoked</option>
+            <option value="BLNCH" ${existingData?.subcategory_code === 'BLNCH' ? 'selected' : ''}>BLNCH - Blanched</option>
+            <option value="PICKL" ${existingData?.subcategory_code === 'PICKL' ? 'selected' : ''}>PICKL - Pickled</option>
+            <option value="MARIN" ${existingData?.subcategory_code === 'MARIN' ? 'selected' : ''}>MARIN - Marinated</option>
+            <option value="FRY" ${existingData?.subcategory_code === 'FRY' ? 'selected' : ''}>FRY - Fried</option>
+            <option value="SIMMR" ${existingData?.subcategory_code === 'SIMMR' ? 'selected' : ''}>SIMMR - Simmered</option>
+            <option value="TMPRA" ${existingData?.subcategory_code === 'TMPRA' ? 'selected' : ''}>TMPRA - Tempura</option>
+            <option value="SVIDE" ${existingData?.subcategory_code === 'SVIDE' ? 'selected' : ''}>SVIDE - Sous-Vide</option>
+            <option value="CHLD" ${existingData?.subcategory_code === 'CHLD' ? 'selected' : ''}>CHLD - Chilled</option>
           </select>
         </div>
         <div class="form-group">
