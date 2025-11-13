@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cost Manager</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>Cost Manager</h1>
+            <h1 onclick="showSection('profit')" style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-home"></i>
+                Cost Manager
+            </h1>
             <div class="nav-links">
                 <button onclick="showSection('ingredients')" class="active">Ingredients</button>
                 <button onclick="showSection('menu')">Menu Items</button>
@@ -208,7 +212,7 @@
         <div id="profit" class="section hidden">
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    
+                    <h2 style="margin: 0;">Dashboard</h2>
                     <select id="trends-period" onchange="loadTrends()" style="padding: 6px 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 13px;">
                         <option value="7">Last Week</option>
                         <option value="14">Last 2 Weeks</option>
