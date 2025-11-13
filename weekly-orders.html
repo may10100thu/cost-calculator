@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weekly Orders - Cost Manager</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>Cost Manager</h1>
+            <a href="index.html#profit" style="text-decoration: none; color: inherit;">
+                <h1 style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-home"></i>
+                    Cost Manager
+                </h1>
+            </a>
             <div class="nav-links">
                 <a href="index.html#ingredients" style="text-decoration: none;"><button>Ingredients</button></a>
                 <a href="index.html#menu" style="text-decoration: none;"><button>Menu Items</button></a>
@@ -32,8 +38,15 @@
                         </p>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="file" id="invoice-upload" accept=".pdf" style="display: none;" onchange="handleInvoiceUpload(event)">
+                        <button class="btn btn-secondary" onclick="document.getElementById('invoice-upload').click()">
+                            <i class="fas fa-file-invoice"></i> Upload Invoice
+                        </button>
                         <button class="btn btn-primary" onclick="submitWeeklyOrders()" id="submit-weekly-btn">
                             Submit All Orders
+                        </button>
+                        <button class="btn btn-secondary" onclick="logout()" style="background: #dc2626;">
+                            <i class="fas fa-sign-out-alt"></i> Logout
                         </button>
                     </div>
                 </div>
@@ -54,6 +67,18 @@
         const $ = (sel) => document.querySelector(sel);
         const fmtMoney = (n) => (isNaN(n) ? "$0.00" : `$${Number(n).toFixed(2)}`);
 
+        // Check authentication
+        console.log('Checking authentication...');
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Session:', session);
+
+        if (!session) {
+            console.log('No session, redirecting to login...');
+            window.location.href = 'login.html';
+        } else {
+            console.log('Authenticated user:', session.user.email);
+        }
+
         function showNotification(message, type = 'success') {
             const alert = $('#weekly-alert');
             alert.className = type === 'error' ? 'alert alert-error' : 'alert alert-success';
@@ -64,12 +89,23 @@
 
         async function loadWeeklyOrders() {
             try {
+                console.log('Loading weekly orders...');
+                // Try to get all ingredients first to test
+                const { data: allIngredients, error: testError } = await supabase
+                    .from('ingredients')
+                    .select('*')
+                    .limit(1);
+
+                console.log('Test query:', { allIngredients, testError });
+
                 const { data: ingredients, error } = await supabase
                     .from('ingredients')
                     .select('*')
                     .eq('is_weekly_order', true)
                     .eq('is_deleted', false)
                     .order('name');
+
+                console.log('Query result:', { ingredients, error });
 
                 if (error) throw error;
 
@@ -90,10 +126,11 @@
                         <thead>
                             <tr>
                                 <th style="text-align: left;">Ingredient</th>
-                                <th style="text-align: center; width: 120px;">Qty</th>
-                                <th style="text-align: center; width: 100px;">Unit</th>
-                                <th style="text-align: right; width: 150px;">Last Price</th>
-                                <th style="text-align: right; width: 150px;">New Price ($)</th>
+                                <th style="text-align: center; width: 100px;">Qty</th>
+                                <th style="text-align: center; width: 80px;">Unit</th>
+                                <th style="text-align: right; width: 130px;">Last Price/Unit</th>
+                                <th style="text-align: right; width: 130px;">New Price/Unit ($)</th>
+                                <th style="text-align: right; width: 130px;">Total Price</th>
                                 <th style="text-align: center; width: 100px;">Change</th>
                             </tr>
                         </thead>
@@ -101,7 +138,9 @@
                 `;
 
                 for (const ing of ingredients) {
-                    const lastPrice = ing.last_weekly_price || ing.total_price;
+                    const lastTotalPrice = ing.last_weekly_price || ing.total_price;
+                    const lastPricePerUnit = lastTotalPrice / ing.quantity;
+                    const currentPricePerUnit = ing.price_per_unit || (ing.total_price / ing.quantity);
                     const lastDate = ing.last_weekly_date
                         ? new Date(ing.last_weekly_date).toLocaleDateString()
                         : 'N/A';
@@ -115,7 +154,7 @@
                             <td style="text-align: center;">${ing.quantity}</td>
                             <td style="text-align: center;">${ing.unit}</td>
                             <td style="text-align: right;">
-                                <div style="font-size: 14px;">${fmtMoney(lastPrice)}</div>
+                                <div style="font-size: 14px;">${fmtMoney(lastPricePerUnit)}</div>
                                 <div style="font-size: 11px; color: #666;">${lastDate}</div>
                             </td>
                             <td style="text-align: right;">
@@ -125,11 +164,24 @@
                                     min="0"
                                     class="weekly-price-input"
                                     data-id="${ing.id}"
-                                    data-last-price="${lastPrice}"
+                                    data-last-price-per-unit="${lastPricePerUnit}"
                                     data-quantity="${ing.quantity}"
-                                    value="${ing.total_price}"
+                                    value="${currentPricePerUnit.toFixed(2)}"
                                     style="width: 100%; text-align: right; padding: 8px; border: 2px solid #e2e8f0; border-radius: 4px;"
-                                    oninput="updatePriceChange(this)"
+                                    oninput="updateFromPricePerUnit(this)"
+                                >
+                            </td>
+                            <td style="text-align: right;">
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="weekly-total-input"
+                                    data-id="${ing.id}"
+                                    data-quantity="${ing.quantity}"
+                                    value="${(ing.quantity * currentPricePerUnit).toFixed(2)}"
+                                    style="width: 100%; text-align: right; padding: 8px; border: 2px solid #e2e8f0; border-radius: 4px;"
+                                    oninput="updateFromTotalPrice(this)"
                                 >
                             </td>
                             <td style="text-align: center;">
@@ -148,45 +200,124 @@
 
                 // Calculate initial changes
                 document.querySelectorAll('.weekly-price-input').forEach(input => {
-                    updatePriceChange(input);
+                    updateFromPricePerUnit(input);
                 });
 
             } catch (err) {
                 console.error('Error loading weekly orders:', err);
+                const container = $('#weekly-orders-container');
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #c00;">
+                        <p style="font-size: 16px; margin-bottom: 10px;">Error loading weekly orders</p>
+                        <p style="font-size: 14px;">${err.message}</p>
+                        <button class="btn btn-primary" onclick="loadWeeklyOrders()" style="margin-top: 20px;">
+                            Retry
+                        </button>
+                    </div>
+                `;
                 showNotification('Error loading weekly orders: ' + err.message, 'error');
             }
         }
 
-        window.updatePriceChange = function(input) {
-            const id = input.dataset.id;
-            const lastPrice = parseFloat(input.dataset.lastPrice);
-            const newPrice = parseFloat(input.value);
-            const changeDiv = document.getElementById(`change-${id}`);
+        // Update when user changes price per unit
+        window.updateFromPricePerUnit = function(pricePerUnitInput) {
+            const id = pricePerUnitInput.dataset.id;
+            const lastPricePerUnit = parseFloat(pricePerUnitInput.dataset.lastPricePerUnit);
+            const newPricePerUnit = parseFloat(pricePerUnitInput.value);
+            const quantity = parseFloat(pricePerUnitInput.dataset.quantity);
 
-            if (isNaN(newPrice) || newPrice <= 0) {
+            const changeDiv = document.getElementById(`change-${id}`);
+            const totalInput = document.querySelector(`.weekly-total-input[data-id="${id}"]`);
+
+            if (isNaN(newPricePerUnit) || newPricePerUnit < 0) {
                 changeDiv.textContent = '-';
                 changeDiv.style.color = '#666';
+                if (totalInput) totalInput.value = '';
                 return;
             }
 
-            const change = newPrice - lastPrice;
-            const changePercent = (change / lastPrice * 100).toFixed(1);
+            // Update total price input
+            const totalPrice = quantity * newPricePerUnit;
+            if (totalInput) {
+                totalInput.value = totalPrice.toFixed(2);
+            }
+
+            // Update change indicator
+            updateChangeIndicator(pricePerUnitInput, changeDiv, newPricePerUnit, lastPricePerUnit);
+        };
+
+        // Update when user changes total price
+        window.updateFromTotalPrice = function(totalInput) {
+            const id = totalInput.dataset.id;
+            const quantity = parseFloat(totalInput.dataset.quantity);
+            const newTotalPrice = parseFloat(totalInput.value);
+
+            const pricePerUnitInput = document.querySelector(`.weekly-price-input[data-id="${id}"]`);
+            const lastPricePerUnit = parseFloat(pricePerUnitInput.dataset.lastPricePerUnit);
+            const changeDiv = document.getElementById(`change-${id}`);
+
+            if (isNaN(newTotalPrice) || newTotalPrice < 0) {
+                changeDiv.textContent = '-';
+                changeDiv.style.color = '#666';
+                if (pricePerUnitInput) pricePerUnitInput.value = '';
+                return;
+            }
+
+            // Calculate and update price per unit
+            const newPricePerUnit = newTotalPrice / quantity;
+            if (pricePerUnitInput) {
+                pricePerUnitInput.value = newPricePerUnit.toFixed(2);
+            }
+
+            // Update change indicator
+            updateChangeIndicator(totalInput, changeDiv, newPricePerUnit, lastPricePerUnit);
+        };
+
+        // Helper to update change indicator styling
+        function updateChangeIndicator(input, changeDiv, newPricePerUnit, lastPricePerUnit) {
+            const change = newPricePerUnit - lastPricePerUnit;
+            const changePercent = lastPricePerUnit > 0 ? (change / lastPricePerUnit * 100).toFixed(1) : 0;
+
+            // Find both inputs to style them the same
+            const id = input.dataset.id;
+            const priceInput = document.querySelector(`.weekly-price-input[data-id="${id}"]`);
+            const totalInput = document.querySelector(`.weekly-total-input[data-id="${id}"]`);
 
             if (Math.abs(change) < 0.01) {
                 changeDiv.innerHTML = '—';
                 changeDiv.style.color = '#666';
+                if (priceInput) {
+                    priceInput.style.borderColor = '#e2e8f0';
+                    priceInput.style.background = '#fff';
+                }
+                if (totalInput) {
+                    totalInput.style.borderColor = '#e2e8f0';
+                    totalInput.style.background = '#fff';
+                }
             } else if (change > 0) {
                 changeDiv.innerHTML = `↑ ${fmtMoney(change)}<br><span style="font-size: 12px;">(+${changePercent}%)</span>`;
                 changeDiv.style.color = '#c00';
-                input.style.borderColor = '#fbb';
-                input.style.background = '#fff5f5';
+                if (priceInput) {
+                    priceInput.style.borderColor = '#fbb';
+                    priceInput.style.background = '#fff5f5';
+                }
+                if (totalInput) {
+                    totalInput.style.borderColor = '#fbb';
+                    totalInput.style.background = '#fff5f5';
+                }
             } else {
                 changeDiv.innerHTML = `↓ ${fmtMoney(Math.abs(change))}<br><span style="font-size: 12px;">(${changePercent}%)</span>`;
                 changeDiv.style.color = '#0a0';
-                input.style.borderColor = '#bfb';
-                input.style.background = '#f5fff5';
+                if (priceInput) {
+                    priceInput.style.borderColor = '#bfb';
+                    priceInput.style.background = '#f5fff5';
+                }
+                if (totalInput) {
+                    totalInput.style.borderColor = '#bfb';
+                    totalInput.style.background = '#f5fff5';
+                }
             }
-        };
+        }
 
         window.submitWeeklyOrders = async function() {
             const inputs = document.querySelectorAll('.weekly-price-input');
@@ -195,24 +326,26 @@
 
             for (const input of inputs) {
                 const id = parseInt(input.dataset.id);
-                const newPrice = parseFloat(input.value);
-                const lastPrice = parseFloat(input.dataset.lastPrice);
+                const pricePerUnit = parseFloat(input.value);
+                const lastPricePerUnit = parseFloat(input.dataset.lastPricePerUnit);
                 const quantity = parseFloat(input.dataset.quantity);
 
-                if (isNaN(newPrice) || newPrice <= 0) {
+                if (isNaN(pricePerUnit) || pricePerUnit < 0) {
                     showNotification('Please enter valid prices for all ingredients', 'error');
                     return;
                 }
 
-                if (newPrice !== lastPrice) {
+                if (pricePerUnit !== lastPricePerUnit) {
                     hasChanges = true;
                 }
 
+                const totalPrice = quantity * pricePerUnit;
+
                 updates.push({
                     id,
-                    newPrice,
-                    quantity,
-                    pricePerUnit: newPrice / quantity
+                    pricePerUnit,
+                    totalPrice,
+                    quantity
                 });
             }
 
@@ -235,9 +368,9 @@
                     const { error: updateError } = await supabase
                         .from('ingredients')
                         .update({
-                            total_price: update.newPrice,
+                            total_price: update.totalPrice,
                             price_per_unit: update.pricePerUnit,
-                            last_weekly_price: update.newPrice,
+                            last_weekly_price: update.totalPrice,
                             last_weekly_date: new Date().toISOString(),
                             updated_at: new Date().toISOString()
                         })
@@ -260,7 +393,7 @@
                             ingredient_name: ing.name,
                             quantity: update.quantity,
                             unit: ing.unit,
-                            total_price: update.newPrice,
+                            total_price: update.totalPrice,
                             price_per_unit: update.pricePerUnit,
                             is_informational: ing.is_informational
                         }]);
@@ -278,8 +411,262 @@
             }
         };
 
+        // Logout function
+        window.logout = async function() {
+            if (confirm('Are you sure you want to logout?')) {
+                await supabase.auth.signOut();
+                window.location.href = 'login.html';
+            }
+        };
+
         // Load orders when page loads
-        window.addEventListener('DOMContentLoaded', loadWeeklyOrders);
+        console.log('Setting up DOMContentLoaded listener...');
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded fired!');
+            loadWeeklyOrders();
+        });
+
+        // Also try loading immediately if DOM is already loaded
+        if (document.readyState === 'loading') {
+            console.log('DOM still loading, waiting for DOMContentLoaded...');
+        } else {
+            console.log('DOM already loaded, calling loadWeeklyOrders immediately...');
+            loadWeeklyOrders();
+        }
+
+        // ===== INVOICE UPLOAD & PROCESSING =====
+
+        window.handleInvoiceUpload = async function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showNotification('Processing invoice... This may take a moment.', 'success');
+
+            try {
+                // Upload PDF to Supabase Storage
+                const fileName = `invoice_${Date.now()}_${file.name}`;
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('invoices')
+                    .upload(fileName, file);
+
+                if (uploadError) throw uploadError;
+
+                // Convert PDF to images
+                const images = await convertPdfToImages(file);
+
+                // Extract data using Claude API
+                const extractedData = await extractInvoiceData(images);
+                console.log('Extracted data from AI:', extractedData);
+
+                // Auto-fill the prices
+                const matchCount = await autoFillPrices(extractedData);
+
+                showNotification(`Invoice processed! Matched ${matchCount} of ${extractedData.length} items.`, 'success');
+
+            } catch (err) {
+                console.error('Error processing invoice:', err);
+                showNotification('Error processing invoice: ' + err.message, 'error');
+            } finally {
+                // Reset file input
+                event.target.value = '';
+            }
+        };
+
+        async function convertPdfToImages(file) {
+            // Load PDF.js dynamically
+            if (!window.pdfjsLib) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const images = [];
+
+            // Convert each page to image
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 2.0 });
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                // Convert canvas to base64
+                const base64 = canvas.toDataURL('image/png').split(',')[1];
+                images.push(base64);
+            }
+
+            return images;
+        }
+
+        async function extractInvoiceData(images) {
+            // Call Supabase Edge Function instead of Claude API directly
+            const { data: { user } } = await supabase.auth.getUser();
+
+            const response = await supabase.functions.invoke('storage-upload', {
+                body: { image: images[0] }
+            });
+
+            if (response.error) {
+                throw new Error(response.error.message || 'Failed to process invoice');
+            }
+
+            return response.data.data;
+        }
+
+        async function autoFillPrices(extractedData) {
+            const inputs = document.querySelectorAll('.weekly-price-input');
+            let matchCount = 0;
+
+            for (const input of inputs) {
+                const ingredientRow = input.closest('tr');
+                const ingredientNameEl = ingredientRow.querySelector('strong');
+                if (!ingredientNameEl) continue;
+
+                const ingredientName = ingredientNameEl.textContent.toLowerCase().trim();
+                const quantity = parseFloat(input.dataset.quantity);
+
+                // Try to find a match in extracted data
+                const match = extractedData.find(item => {
+                    const extractedName = item.ingredient.toLowerCase().trim();
+
+                    // Remove ALL special characters and spaces for basic comparison
+                    const normalizedIngredient = ingredientName.replace(/[^a-z0-9]/g, '');
+                    const normalizedExtracted = extractedName.replace(/[^a-z0-9]/g, '');
+
+                    // Extract key words (longer than 3 chars) from both names
+                    const getKeyWords = (str) => {
+                        // Split by non-alphanumeric, filter short words
+                        return str.toLowerCase()
+                            .split(/[^a-z0-9]+/)
+                            .filter(w => w.length > 3);
+                    };
+
+                    const ingredientKeyWords = getKeyWords(ingredientName);
+                    const extractedKeyWords = getKeyWords(extractedName);
+
+                    // Count how many key words match
+                    const matchingWords = ingredientKeyWords.filter(word =>
+                        extractedKeyWords.some(ew =>
+                            word.includes(ew) ||
+                            ew.includes(word) ||
+                            normalizedExtracted.includes(word)
+                        )
+                    );
+
+                    console.log(`Comparing "${ingredientName}" with "${extractedName}"`, {
+                        ingredientKeyWords,
+                        extractedKeyWords,
+                        matchingWords,
+                        normalizedMatch: normalizedExtracted.includes(normalizedIngredient) || normalizedIngredient.includes(normalizedExtracted)
+                    });
+
+                    // Match if:
+                    // 1. Normalized strings contain each other
+                    // 2. At least 2 key words match
+                    // 3. High similarity score
+                    return normalizedExtracted.includes(normalizedIngredient) ||
+                           normalizedIngredient.includes(normalizedExtracted) ||
+                           matchingWords.length >= 2 ||
+                           ingredientName.includes(extractedName) ||
+                           extractedName.includes(ingredientName) ||
+                           similarText(normalizedIngredient, normalizedExtracted) > 0.65;
+                });
+
+                if (match) {
+                    console.log('Matched:', ingredientName, 'with', match);
+
+                    // Calculate price per unit
+                    let pricePerUnit;
+
+                    if (match.pricePerUnit !== undefined && !isNaN(match.pricePerUnit)) {
+                        // Explicit pricePerUnit field
+                        pricePerUnit = match.pricePerUnit;
+                    } else if (match.price !== undefined && !isNaN(match.price)) {
+                        // Generic "price" field - assume it's already per unit from AI
+                        // (AI extracts unit prices from invoices like "$9.00 per kg")
+                        pricePerUnit = match.price;
+                    } else if (match.totalPrice !== undefined && !isNaN(match.totalPrice)) {
+                        // Has totalPrice, calculate pricePerUnit
+                        const extractedQty = match.quantity || quantity;
+                        pricePerUnit = match.totalPrice / extractedQty;
+                    } else {
+                        console.warn('No valid price found in match:', match);
+                        continue;
+                    }
+
+                    console.log('Using pricePerUnit:', pricePerUnit);
+
+                    if (!isNaN(pricePerUnit) && pricePerUnit > 0) {
+                        input.value = pricePerUnit.toFixed(2);
+                        updateFromPricePerUnit(input);
+                        matchCount++;
+
+                        // Highlight matched row
+                        ingredientRow.style.background = '#f0f9ff';
+                        setTimeout(() => {
+                            ingredientRow.style.background = '';
+                        }, 3000);
+                    }
+                }
+            }
+
+            console.log(`Matched ${matchCount} ingredients`);
+            return matchCount;
+        }
+
+        // Helper function for fuzzy string matching
+        function similarText(str1, str2) {
+            const longer = str1.length > str2.length ? str1 : str2;
+            const shorter = str1.length > str2.length ? str2 : str1;
+
+            if (longer.length === 0) return 1.0;
+
+            const editDistance = levenshteinDistance(longer, shorter);
+            return (longer.length - editDistance) / longer.length;
+        }
+
+        function levenshteinDistance(str1, str2) {
+            const matrix = [];
+
+            for (let i = 0; i <= str2.length; i++) {
+                matrix[i] = [i];
+            }
+
+            for (let j = 0; j <= str1.length; j++) {
+                matrix[0][j] = j;
+            }
+
+            for (let i = 1; i <= str2.length; i++) {
+                for (let j = 1; j <= str1.length; j++) {
+                    if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+
+            return matrix[str2.length][str1.length];
+        }
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
     </script>
 </body>
 </html>
