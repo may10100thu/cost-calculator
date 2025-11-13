@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Cost Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-home"></i>
+                Cost Manager
+            </h1>
+        </div>
+
+        <div style="padding: 25px; max-width: 500px; margin: 50px auto;">
+            <div class="card">
+                <h2 style="text-align: center; margin-bottom: 20px;">Login</h2>
+                
+                <div id="auth-alert"></div>
+
+                <form id="login-form" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="email" required placeholder="you@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="password" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        Login
+                    </button>
+                </form>
+
+                <div style="text-align: center; margin: 20px 0; color: #666;">
+                    Don't have an account?
+                </div>
+
+                <form id="signup-form">
+                    <button type="submit" class="btn btn-secondary" style="width: 100%;">
+                        Create Account
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { supabase } from './script-supabase.js';
+
+        const $ = (sel) => document.querySelector(sel);
+
+        function showNotification(message, type = 'success') {
+            const alert = $('#auth-alert');
+            alert.className = type === 'error' ? 'alert alert-error' : 'alert alert-success';
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        // Check if already logged in
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            window.location.href = 'index.html';
+        }
+
+        // Login
+        $('#login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = $('#email').value;
+            const password = $('#password').value;
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (error) throw error;
+
+                showNotification('Login successful!', 'success');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1000);
+
+            } catch (err) {
+                showNotification('Login failed: ' + err.message, 'error');
+            }
+        });
+
+        // Signup
+        $('#signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = $('#email').value;
+            const password = $('#password').value;
+
+            if (!email || !password) {
+                showNotification('Please enter email and password', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showNotification('Password must be at least 6 characters', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email,
+                    password
+                });
+
+                if (error) throw error;
+
+                showNotification('Account created! Please check your email to confirm.', 'success');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+
+            } catch (err) {
+                showNotification('Signup failed: ' + err.message, 'error');
+            }
+        });
+    </script>
+</body>
+</html>
