@@ -39,8 +39,15 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="file" id="invoice-upload" accept=".pdf" style="display: none;" onchange="handleInvoiceUpload(event)">
+                        <input type="file" id="weekly-csv-import" accept=".csv" style="display: none;" onchange="handleWeeklyCSVImport(event)">
                         <button class="btn btn-secondary" onclick="document.getElementById('invoice-upload').click()">
                             <i class="fas fa-file-invoice"></i> Upload Invoice
+                        </button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('weekly-csv-import').click()" title="Import from CSV">
+                            <i class="fas fa-file-import"></i> Import CSV
+                        </button>
+                        <button class="btn btn-primary" onclick="exportWeeklyOrdersCSV()" title="Export to CSV">
+                           Export CSV
                         </button>
                         <button class="btn btn-primary" onclick="submitWeeklyOrders()" id="submit-weekly-btn">
                             Submit All Orders
@@ -811,6 +818,280 @@
                 }
             }
         });
+
+        // ===== CSV IMPORT/EXPORT FOR WEEKLY ORDERS =====
+
+        window.exportWeeklyOrdersCSV = async function() {
+            try {
+                const { data: ingredients, error } = await supabase
+                    .from('ingredients')
+                    .select('*')
+                    .eq('is_weekly_order', true)
+                    .eq('is_deleted', false)
+                    .order('name');
+
+                if (error) throw error;
+
+                if (!ingredients || ingredients.length === 0) {
+                    showNotification('No weekly order ingredients to export', 'error');
+                    return;
+                }
+
+                const rows = [
+                    ['Ingredient Name', 'Quantity', 'Unit', 'Price Per Unit', 'Total Price', 'Supplier', 'Semantic ID'],
+                    ...(ingredients || []).map(ing => [
+                        ing.name,
+                        ing.quantity,
+                        ing.unit,
+                        ing.price_per_unit || (ing.total_price / ing.quantity),
+                        ing.total_price,
+                        ing.supplier || '',
+                        ing.semantic_id || ''
+                    ])
+                ];
+
+                const csvContent = rows.map(row =>
+                    row.map(cell => {
+                        const str = String(cell);
+                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                            return '"' + str.replace(/"/g, '""') + '"';
+                        }
+                        return str;
+                    }).join(',')
+                ).join('\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `weekly-orders-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showNotification('Weekly orders exported successfully!', 'success');
+            } catch (err) {
+                console.error('Export error:', err);
+                showNotification(`Export failed: ${err.message}`, 'error');
+            }
+        };
+
+        window.handleWeeklyCSVImport = async function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const rows = parseCSVText(text);
+
+                if (rows.length < 2) {
+                    showNotification('CSV file is empty or invalid', 'error');
+                    return;
+                }
+
+                const headers = rows[0].map(h => h.trim().toLowerCase());
+                const dataRows = rows.slice(1);
+
+                const requiredHeaders = ['ingredient name', 'price per unit'];
+                const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+
+                if (missingHeaders.length > 0) {
+                    showNotification(`Missing required columns: ${missingHeaders.join(', ')}`, 'error');
+                    return;
+                }
+
+                const getIndex = (name) => headers.indexOf(name);
+                const nameIdx = getIndex('ingredient name');
+                const pricePerUnitIdx = getIndex('price per unit');
+                const totalPriceIdx = getIndex('total price');
+                const supplierIdx = getIndex('supplier');
+                const qtyIdx = getIndex('quantity');
+                const unitIdx = getIndex('unit');
+                const semanticIdx = getIndex('semantic id');
+
+                const updates = [];
+                const errors = [];
+
+                for (let i = 0; i < dataRows.length; i++) {
+                    const row = dataRows[i];
+                    const rowNum = i + 2;
+
+                    if (row.every(cell => !cell || cell.trim() === '')) continue;
+
+                    const name = row[nameIdx]?.trim();
+                    const pricePerUnit = parseFloat(row[pricePerUnitIdx]);
+
+                    if (!name) {
+                        errors.push(`Row ${rowNum}: Missing ingredient name`);
+                        continue;
+                    }
+                    if (isNaN(pricePerUnit) || pricePerUnit < 0) {
+                        errors.push(`Row ${rowNum}: Invalid price for "${name}"`);
+                        continue;
+                    }
+
+                    const supplier = supplierIdx >= 0 ? row[supplierIdx]?.trim() : null;
+                    const quantity = qtyIdx >= 0 ? parseFloat(row[qtyIdx]) : null;
+                    const unit = unitIdx >= 0 ? row[unitIdx]?.trim() : null;
+                    const totalPrice = totalPriceIdx >= 0 ? parseFloat(row[totalPriceIdx]) : null;
+                    const semanticId = semanticIdx >= 0 ? row[semanticIdx]?.trim() : null;
+
+                    updates.push({ name, pricePerUnit, totalPrice, supplier, quantity, unit, semanticId });
+                }
+
+                if (updates.length === 0) {
+                    showNotification('No valid data found in CSV', 'error');
+                    return;
+                }
+
+                const confirmMsg = `Import ${updates.length} ingredient(s)?\n\nThis will update existing ingredients and add new ones.${errors.length > 0 ? `\n\n${errors.length} row(s) had errors and will be skipped.` : ''}`;
+                if (!confirm(confirmMsg)) {
+                    event.target.value = '';
+                    return;
+                }
+
+                let updatedCount = 0;
+                let insertedCount = 0;
+
+                for (const update of updates) {
+                    try {
+                        let query = supabase
+                            .from('ingredients')
+                            .select('id, quantity, unit')
+                            .eq('is_weekly_order', true)
+                            .eq('is_deleted', false);
+
+                        if (update.semanticId) {
+                            query = query.eq('semantic_id', update.semanticId);
+                        } else {
+                            query = query.ilike('name', update.name);
+                        }
+
+                        const { data: existing } = await query.single();
+
+                        if (existing) {
+                            // Update existing ingredient
+                            const finalQuantity = update.quantity || existing.quantity;
+                            const finalUnit = update.unit || existing.unit;
+                            const finalTotalPrice = update.totalPrice || (update.pricePerUnit * finalQuantity);
+
+                            const updateData = {
+                                price_per_unit: update.pricePerUnit,
+                                total_price: finalTotalPrice,
+                                updated_at: new Date().toISOString()
+                            };
+
+                            // Only add supplier if column exists (comment out for now)
+                            if (update.supplier) updateData.supplier = update.supplier;
+                            if (update.quantity) updateData.quantity = update.quantity;
+                            if (update.unit) updateData.unit = update.unit;
+
+                            const { error: updateError } = await supabase
+                                .from('ingredients')
+                                .update(updateData)
+                                .eq('id', existing.id);
+
+                            if (updateError) throw updateError;
+                            updatedCount++;
+                        } else {
+                            // Insert new ingredient
+                            // Require quantity and unit for new ingredients
+                            if (!update.quantity || !update.unit) {
+                                errors.push(`Cannot insert "${update.name}": Missing quantity or unit`);
+                                continue;
+                            }
+
+                            const finalTotalPrice = update.totalPrice || (update.pricePerUnit * update.quantity);
+
+                            const newIngredient = {
+                                name: update.name,
+                                quantity: update.quantity,
+                                unit: update.unit,
+                                price_per_unit: update.pricePerUnit,
+                                total_price: finalTotalPrice,
+                                is_weekly_order: true,
+                                is_informational: false,
+                                is_deleted: false,
+                                semantic_id: update.semanticId || null,
+                                supplier: update.supplier || null,  // Column doesn't exist yet
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            };
+
+                            const { error: insertError } = await supabase
+                                .from('ingredients')
+                                .insert([newIngredient]);
+
+                            if (insertError) throw insertError;
+                            insertedCount++;
+                        }
+                    } catch (err) {
+                        console.error(`Error processing "${update.name}":`, err);
+                        errors.push(`Failed to process "${update.name}": ${err.message}`);
+                    }
+                }
+
+                const totalProcessed = updatedCount + insertedCount;
+                showNotification(`Successfully imported ${totalProcessed} ingredient(s)! (${insertedCount} new, ${updatedCount} updated)`, 'success');
+
+                if (errors.length > 0) {
+                    console.warn('CSV Import Warnings:', errors);
+                    alert(`Imported ${totalProcessed} ingredients (${insertedCount} new, ${updatedCount} updated).\n\n${errors.length} error(s):\n` +
+                        errors.slice(0, 5).join('\n') +
+                        (errors.length > 5 ? `\n...and ${errors.length - 5} more (check console)` : ''));
+                }
+
+                await loadWeeklyOrders();
+
+            } catch (err) {
+                console.error('CSV Import Error:', err);
+                showNotification(`Import failed: ${err.message}`, 'error');
+            } finally {
+                event.target.value = '';
+            }
+        };
+
+        function parseCSVText(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(currentCell);
+                    currentCell = '';
+                } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && nextChar === '\n') i++;
+                    currentRow.push(currentCell);
+                    if (currentRow.some(cell => cell.trim() !== '')) {
+                        rows.push(currentRow);
+                    }
+                    currentRow = [];
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+
+            if (currentCell || currentRow.length > 0) {
+                currentRow.push(currentCell);
+                if (currentRow.some(cell => cell.trim() !== '')) {
+                    rows.push(currentRow);
+                }
+            }
+
+            return rows;
+        }
     </script>
 </body>
 </html>
