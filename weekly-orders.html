@@ -60,6 +60,44 @@
         </div>
     </div>
 
+    <!-- Conversion Modal -->
+    <div id="conversion-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="card" style="max-width: 500px; margin: 20px;">
+            <h3 style="margin-top: 0;">Package to Per-Unit Converter</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                Convert package pricing to per-unit pricing. Example: 1 bag @ $34 containing 20kg → $1.70/kg
+            </p>
+
+            <div class="form-group">
+                <label>Package Price ($)</label>
+                <input type="number" id="conv-package-price" step="0.01" min="0" placeholder="34.00" style="width: 100%;">
+            </div>
+
+            <div class="form-group">
+                <label>Package Contains (quantity)</label>
+                <input type="number" id="conv-package-qty" step="0.01" min="0" placeholder="20" style="width: 100%;">
+            </div>
+
+            <div class="form-group">
+                <label>Target Quantity (<span id="conv-target-qty"></span> <span id="conv-unit"></span>)</label>
+                <input type="number" id="conv-target-amount" step="0.01" min="0" readonly style="width: 100%; background: #f7fafc;">
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                    This is the quantity already set for this ingredient
+                </p>
+            </div>
+
+            <div style="padding: 15px; background: #f7fafc; border-radius: 6px; margin: 20px 0;">
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Calculated Price Per Unit:</div>
+                <div id="conv-result" style="font-size: 24px; font-weight: 600; color: #186B28;">-</div>
+            </div>
+
+            <div class="actions">
+                <button type="button" class="btn btn-secondary" onclick="closeConversionModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="applyConversion()">Apply</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="./script-supabase.js"></script>
     <script type="module">
         import { supabase } from './script-supabase.js';
@@ -157,19 +195,29 @@
                                 <div style="font-size: 14px;">${fmtMoney(lastPricePerUnit)}</div>
                                 <div style="font-size: 11px; color: #666;">${lastDate}</div>
                             </td>
-                            <td style="text-align: right;">
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    class="weekly-price-input"
-                                    data-id="${ing.id}"
-                                    data-last-price-per-unit="${lastPricePerUnit}"
-                                    data-quantity="${ing.quantity}"
-                                    value="${currentPricePerUnit.toFixed(2)}"
-                                    style="width: 100%; text-align: right; padding: 8px; border: 2px solid #e2e8f0; border-radius: 4px;"
-                                    oninput="updateFromPricePerUnit(this)"
-                                >
+                            <td style="text-align: right; position: relative;">
+                                <div style="display: flex; gap: 4px; align-items: center;">
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        class="weekly-price-input"
+                                        data-id="${ing.id}"
+                                        data-last-price-per-unit="${lastPricePerUnit}"
+                                        data-quantity="${ing.quantity}"
+                                        value="${currentPricePerUnit.toFixed(2)}"
+                                        style="flex: 1; text-align: right; padding: 8px; border: 2px solid #e2e8f0; border-radius: 4px;"
+                                        oninput="updateFromPricePerUnit(this)"
+                                    >
+                                    <button
+                                        onclick="showConversionModal(${ing.id}, ${ing.quantity}, '${ing.unit}')"
+                                        class="btn btn-secondary"
+                                        style="padding: 8px 10px; font-size: 12px; min-width: auto;"
+                                        title="Convert package price to per-unit price"
+                                    >
+                                        <i class="fas fa-calculator"></i>
+                                    </button>
+                                </div>
                             </td>
                             <td style="text-align: right;">
                                 <input
@@ -667,6 +715,102 @@
                 document.head.appendChild(script);
             });
         }
+
+        // ===== CONVERSION CALCULATOR =====
+
+        let currentConversionId = null;
+
+        window.showConversionModal = function(id, targetQty, unit) {
+            currentConversionId = id;
+
+            // Populate modal with ingredient info
+            $('#conv-target-qty').textContent = targetQty;
+            $('#conv-unit').textContent = unit;
+            $('#conv-target-amount').value = targetQty;
+
+            // Clear previous inputs
+            $('#conv-package-price').value = '';
+            $('#conv-package-qty').value = '';
+            $('#conv-result').textContent = '-';
+
+            // Show modal
+            $('#conversion-modal').style.display = 'flex';
+
+            // Focus on first input
+            setTimeout(() => $('#conv-package-price').focus(), 100);
+
+            // Set up real-time calculation
+            const calculate = () => {
+                const packagePrice = parseFloat($('#conv-package-price').value);
+                const packageQty = parseFloat($('#conv-package-qty').value);
+
+                if (!isNaN(packagePrice) && !isNaN(packageQty) && packageQty > 0) {
+                    const pricePerUnit = packagePrice / packageQty;
+                    $('#conv-result').textContent = fmtMoney(pricePerUnit);
+                } else {
+                    $('#conv-result').textContent = '-';
+                }
+            };
+
+            // Attach listeners
+            $('#conv-package-price').oninput = calculate;
+            $('#conv-package-qty').oninput = calculate;
+        };
+
+        window.closeConversionModal = function() {
+            $('#conversion-modal').style.display = 'none';
+            $('#conv-package-price').value = '';
+            $('#conv-package-qty').value = '';
+            $('#conv-result').textContent = '-';
+            currentConversionId = null;
+        };
+
+        window.applyConversion = function() {
+            // Get the calculated result
+            const resultText = $('#conv-result').textContent;
+
+            if (resultText === '-') {
+                showNotification('Please enter valid package price and quantity', 'error');
+                return;
+            }
+
+            // Parse the price (remove $ and commas)
+            const pricePerUnit = parseFloat(resultText.replace(/[$,]/g, ''));
+
+            if (isNaN(pricePerUnit) || pricePerUnit <= 0) {
+                showNotification('Invalid calculated price', 'error');
+                return;
+            }
+
+            // Find the input and update it
+            const input = document.querySelector(`.weekly-price-input[data-id="${currentConversionId}"]`);
+
+            if (input) {
+                input.value = pricePerUnit.toFixed(2);
+                updateFromPricePerUnit(input);
+                showNotification('Price updated from conversion!', 'success');
+            }
+
+            closeConversionModal();
+        };
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const modal = $('#conversion-modal');
+            if (event.target === modal) {
+                closeConversionModal();
+            }
+        });
+
+        // Close modal on Escape key
+        window.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const modal = $('#conversion-modal');
+                if (modal.style.display === 'flex') {
+                    closeConversionModal();
+                }
+            }
+        });
     </script>
 </body>
 </html>
