@@ -1842,25 +1842,72 @@ window.handleCSVImport = async function(event) {
     }
 
     // Confirm import
-    const confirmMsg = `Import ${ingredients.length} ingredient(s)?${errors.length > 0 ? `\n\n${errors.length} row(s) had errors and will be skipped.` : ''}`;
+    const confirmMsg = `Import ${ingredients.length} ingredient(s)?\n\nThis will update existing ingredients and add new ones.${errors.length > 0 ? `\n\n${errors.length} row(s) had errors and will be skipped.` : ''}`;
     if (!confirm(confirmMsg)) {
       event.target.value = ''; // Reset file input
       return;
     }
 
-    // Insert into database
-    const { data, error } = await supabase
-      .from('ingredients')
-      .insert(ingredients)
-      .select();
+    // Process each ingredient (upsert: update if exists, insert if new)
+    let insertedCount = 0;
+    let updatedCount = 0;
 
-    if (error) throw error;
+    for (const ing of ingredients) {
+      try {
+        // Try to find existing ingredient by semantic_id (if provided) or by name
+        let existingQuery = supabase
+          .from('ingredients')
+          .select('id')
+          .eq('is_deleted', false);
 
-    showNotification(`Successfully imported ${ingredients.length} ingredient(s)!`, 'success');
+        if (ing.semantic_id) {
+          existingQuery = existingQuery.eq('semantic_id', ing.semantic_id);
+        } else {
+          existingQuery = existingQuery.ilike('name', ing.name);
+        }
+
+        const { data: existing } = await existingQuery.single();
+
+        if (existing) {
+          // Update existing ingredient
+          const { error: updateError } = await supabase
+            .from('ingredients')
+            .update({
+              name: ing.name,
+              quantity: ing.quantity,
+              unit: ing.unit,
+              total_price: ing.total_price,
+              price_per_unit: ing.price_per_unit,
+              is_weekly_order: ing.is_weekly_order,
+              is_informational: ing.is_informational,
+              semantic_id: ing.semantic_id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id);
+
+          if (updateError) throw updateError;
+          updatedCount++;
+        } else {
+          // Insert new ingredient
+          const { error: insertError } = await supabase
+            .from('ingredients')
+            .insert([ing]);
+
+          if (insertError) throw insertError;
+          insertedCount++;
+        }
+      } catch (err) {
+        console.error(`Error processing ingredient "${ing.name}":`, err);
+        errors.push(`Failed to import "${ing.name}": ${err.message}`);
+      }
+    }
+
+    const totalProcessed = insertedCount + updatedCount;
+    showNotification(`Successfully imported ${totalProcessed} ingredient(s)! (${insertedCount} new, ${updatedCount} updated)`, 'success');
 
     if (errors.length > 0) {
       console.warn('CSV Import Warnings:', errors);
-      alert(`Imported ${ingredients.length} ingredients.\n\n${errors.length} row(s) had errors:\n` +
+      alert(`Imported ${totalProcessed} ingredients (${insertedCount} new, ${updatedCount} updated).\n\n${errors.length} row(s) had errors:\n` +
         errors.slice(0, 5).join('\n') +
         (errors.length > 5 ? `\n...and ${errors.length - 5} more (check console)` : ''));
     }
@@ -1988,5 +2035,179 @@ window.exportMenuItemsCSV = async function() {
     showNotification('Menu items exported successfully!', 'success');
   } catch (err) {
     showNotification(`Export failed: ${err.message}`, 'error');
+  }
+};
+
+window.handleMenuCSVImport = async function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const rows = parseCSV(text);
+
+    if (rows.length < 2) {
+      showNotification('CSV file is empty or invalid', 'error');
+      return;
+    }
+
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const dataRows = rows.slice(1);
+
+    // Required columns - only menu item name is required
+    const requiredHeaders = ['menu item'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+
+    if (missingHeaders.length > 0) {
+      showNotification(`Missing required columns: ${missingHeaders.join(', ')}`, 'error');
+      return;
+    }
+
+    // Find column indices
+    const getIndex = (name) => headers.indexOf(name);
+    const nameIdx = getIndex('menu item');
+    const salePriceIdx = getIndex('sale price');
+    const totalCostIdx = getIndex('total cost');
+    const isSubRecipeIdx = getIndex('is sub-recipe');
+
+    const updates = [];
+    const errors = [];
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const rowNum = i + 2;
+
+      // Skip empty rows
+      if (row.every(cell => !cell || cell.trim() === '')) continue;
+
+      const name = row[nameIdx]?.trim();
+
+      if (!name) {
+        errors.push(`Row ${rowNum}: Missing menu item name`);
+        continue;
+      }
+
+      // Sale price is optional
+      const salePriceStr = salePriceIdx >= 0 ? row[salePriceIdx]?.trim() : '';
+      const salePrice = salePriceStr ? parseFloat(salePriceStr) : null;
+
+      // Validate sale price if provided
+      if (salePrice !== null && (isNaN(salePrice) || salePrice < 0)) {
+        errors.push(`Row ${rowNum}: Invalid sale price for "${name}"`);
+        continue;
+      }
+
+      // Total cost is optional
+      const totalCostStr = totalCostIdx >= 0 ? row[totalCostIdx]?.trim() : '';
+      const totalCost = totalCostStr ? parseFloat(totalCostStr) : null;
+
+      // Validate total cost if provided
+      if (totalCost !== null && (isNaN(totalCost) || totalCost < 0)) {
+        errors.push(`Row ${rowNum}: Invalid total cost for "${name}"`);
+        continue;
+      }
+
+      // Optional: is_sub_recipe
+      const isSubRecipe = isSubRecipeIdx >= 0 &&
+        ['yes', 'true', '1', 'y'].includes(row[isSubRecipeIdx]?.trim().toLowerCase());
+
+      updates.push({ name, salePrice, totalCost, isSubRecipe });
+    }
+
+    if (updates.length === 0) {
+      showNotification('No valid menu items found in CSV', 'error');
+      if (errors.length > 0) {
+        console.error('CSV Import Errors:', errors);
+        alert('Errors found:\n' + errors.slice(0, 10).join('\n') +
+          (errors.length > 10 ? `\n...and ${errors.length - 10} more` : ''));
+      }
+      return;
+    }
+
+    // Confirm import
+    const confirmMsg = `Import ${updates.length} menu item(s)?\n\nThis will update existing items and add new ones.${errors.length > 0 ? `\n\n${errors.length} row(s) had errors and will be skipped.` : ''}`;
+    if (!confirm(confirmMsg)) {
+      event.target.value = '';
+      return;
+    }
+
+    // Process updates and inserts
+    let updatedCount = 0;
+    let insertedCount = 0;
+
+    for (const update of updates) {
+      try {
+        // Find menu item by name (case-insensitive)
+        const { data: existing } = await supabase
+          .from('menu_items')
+          .select('id')
+          .eq('is_deleted', false)
+          .ilike('name', update.name)
+          .single();
+
+        if (existing) {
+          // Update existing menu item
+          const updateData = {
+            updated_at: new Date().toISOString()
+          };
+
+          // Only update fields if provided
+          if (update.salePrice !== null) {
+            updateData.sale_price = update.salePrice;
+          }
+          if (update.totalCost !== null) {
+            updateData.total_cost = update.totalCost;
+          }
+
+          const { error: updateError } = await supabase
+            .from('menu_items')
+            .update(updateData)
+            .eq('id', existing.id);
+
+          if (updateError) throw updateError;
+          updatedCount++;
+        } else {
+          // Insert new menu item
+          const newMenuItem = {
+            name: update.name,
+            sale_price: update.salePrice,
+            total_cost: update.totalCost !== null ? update.totalCost : 0,  // Use provided cost or default to 0
+            is_sub_recipe: update.isSubRecipe,
+            is_deleted: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          const { error: insertError } = await supabase
+            .from('menu_items')
+            .insert([newMenuItem]);
+
+          if (insertError) throw insertError;
+          insertedCount++;
+        }
+      } catch (err) {
+        console.error(`Error processing "${update.name}":`, err);
+        errors.push(`Failed to process "${update.name}": ${err.message}`);
+      }
+    }
+
+    const totalProcessed = updatedCount + insertedCount;
+    showNotification(`Successfully imported ${totalProcessed} menu item(s)! (${insertedCount} new, ${updatedCount} updated)`, 'success');
+
+    if (errors.length > 0) {
+      console.warn('CSV Import Warnings:', errors);
+      alert(`Imported ${totalProcessed} menu items (${insertedCount} new, ${updatedCount} updated).\n\n${errors.length} error(s):\n` +
+        errors.slice(0, 5).join('\n') +
+        (errors.length > 5 ? `\n...and ${errors.length - 5} more (check console)` : ''));
+    }
+
+    // Reload menu items
+    await loadMenuItems();
+
+  } catch (err) {
+    console.error('CSV Import Error:', err);
+    showNotification(`Import failed: ${err.message}`, 'error');
+  } finally {
+    event.target.value = '';
   }
 };
