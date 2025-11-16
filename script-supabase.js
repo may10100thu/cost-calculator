@@ -1712,13 +1712,16 @@ window.exportIngredientsCSV = async function() {
     if (error) throw error;
 
     const rows = [
-      ['Ingredient Name', 'Quantity', 'Unit', 'Total Price', 'Price Per Unit'],
+      ['Ingredient Name', 'Quantity', 'Unit', 'Total Price', 'Price Per Unit', 'Weekly Order', 'Informational', 'Semantic ID'],
       ...(ingredients || []).map(ing => [
         ing.name,
         ing.quantity,
         ing.unit,
         ing.total_price,
-        ing.price_per_unit
+        ing.price_per_unit,
+        ing.is_weekly_order ? 'yes' : 'no',
+        ing.is_informational ? 'yes' : 'no',
+        ing.semantic_id || ''
       ])
     ];
 
@@ -1728,6 +1731,202 @@ window.exportIngredientsCSV = async function() {
     showNotification(`Export failed: ${err.message}`, 'error');
   }
 };
+
+window.handleCSVImport = async function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const rows = parseCSV(text);
+
+    if (rows.length < 2) {
+      showNotification('CSV file is empty or invalid', 'error');
+      return;
+    }
+
+    // Expected headers: Ingredient Name, Quantity, Unit, Total Price, Price Per Unit, Weekly Order, Informational, Semantic ID
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const dataRows = rows.slice(1);
+
+    // Validate headers
+    const requiredHeaders = ['ingredient name', 'quantity', 'unit', 'total price'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+
+    if (missingHeaders.length > 0) {
+      showNotification(`Missing required columns: ${missingHeaders.join(', ')}`, 'error');
+      return;
+    }
+
+    // Find column indices
+    const getIndex = (name) => headers.indexOf(name);
+    const nameIdx = getIndex('ingredient name');
+    const qtyIdx = getIndex('quantity');
+    const unitIdx = getIndex('unit');
+    const priceIdx = getIndex('total price');
+    const pricePerUnitIdx = getIndex('price per unit');
+    const weeklyIdx = getIndex('weekly order');
+    const infoIdx = getIndex('informational');
+    const semanticIdx = getIndex('semantic id');
+
+    // Prepare ingredients for import
+    const ingredients = [];
+    const errors = [];
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const rowNum = i + 2; // +2 because of header and 0-indexing
+
+      // Skip empty rows
+      if (row.every(cell => !cell || cell.trim() === '')) continue;
+
+      const name = row[nameIdx]?.trim();
+      const quantity = parseFloat(row[qtyIdx]);
+      const unit = row[unitIdx]?.trim();
+      const totalPrice = parseFloat(row[priceIdx]);
+
+      // Validate required fields
+      if (!name) {
+        errors.push(`Row ${rowNum}: Missing ingredient name`);
+        continue;
+      }
+      if (isNaN(quantity) || quantity <= 0) {
+        errors.push(`Row ${rowNum}: Invalid quantity for "${name}"`);
+        continue;
+      }
+      if (!unit) {
+        errors.push(`Row ${rowNum}: Missing unit for "${name}"`);
+        continue;
+      }
+      if (isNaN(totalPrice) || totalPrice < 0) {
+        errors.push(`Row ${rowNum}: Invalid total price for "${name}"`);
+        continue;
+      }
+
+      // Calculate price per unit if not provided
+      let pricePerUnit = pricePerUnitIdx >= 0 ? parseFloat(row[pricePerUnitIdx]) : NaN;
+      if (isNaN(pricePerUnit)) {
+        pricePerUnit = totalPrice / quantity;
+      }
+
+      // Parse optional fields
+      const isWeeklyOrder = weeklyIdx >= 0 &&
+        ['yes', 'true', '1', 'y'].includes(row[weeklyIdx]?.trim().toLowerCase());
+      const isInformational = infoIdx >= 0 &&
+        ['yes', 'true', '1', 'y'].includes(row[infoIdx]?.trim().toLowerCase());
+      const semanticId = semanticIdx >= 0 ? row[semanticIdx]?.trim() : null;
+
+      ingredients.push({
+        name,
+        quantity,
+        unit,
+        total_price: totalPrice,
+        price_per_unit: pricePerUnit,
+        is_weekly_order: isWeeklyOrder,
+        is_informational: isInformational,
+        semantic_id: semanticId || null,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    if (ingredients.length === 0) {
+      showNotification('No valid ingredients found in CSV', 'error');
+      if (errors.length > 0) {
+        console.error('CSV Import Errors:', errors);
+        alert('Errors found:\n' + errors.slice(0, 10).join('\n') +
+          (errors.length > 10 ? `\n...and ${errors.length - 10} more` : ''));
+      }
+      return;
+    }
+
+    // Confirm import
+    const confirmMsg = `Import ${ingredients.length} ingredient(s)?${errors.length > 0 ? `\n\n${errors.length} row(s) had errors and will be skipped.` : ''}`;
+    if (!confirm(confirmMsg)) {
+      event.target.value = ''; // Reset file input
+      return;
+    }
+
+    // Insert into database
+    const { data, error } = await supabase
+      .from('ingredients')
+      .insert(ingredients)
+      .select();
+
+    if (error) throw error;
+
+    showNotification(`Successfully imported ${ingredients.length} ingredient(s)!`, 'success');
+
+    if (errors.length > 0) {
+      console.warn('CSV Import Warnings:', errors);
+      alert(`Imported ${ingredients.length} ingredients.\n\n${errors.length} row(s) had errors:\n` +
+        errors.slice(0, 5).join('\n') +
+        (errors.length > 5 ? `\n...and ${errors.length - 5} more (check console)` : ''));
+    }
+
+    // Reload ingredients list
+    await loadIngredients();
+
+  } catch (err) {
+    console.error('CSV Import Error:', err);
+    showNotification(`Import failed: ${err.message}`, 'error');
+  } finally {
+    // Reset file input
+    event.target.value = '';
+  }
+};
+
+// Simple CSV parser that handles quoted fields
+function parseCSV(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        // Escaped quote
+        currentCell += '"';
+        i++; // Skip next quote
+      } else {
+        // Toggle quote mode
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      // End of cell
+      currentRow.push(currentCell);
+      currentCell = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      // End of row
+      if (char === '\r' && nextChar === '\n') {
+        i++; // Skip \n in \r\n
+      }
+      currentRow.push(currentCell);
+      if (currentRow.some(cell => cell.trim() !== '')) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentCell = '';
+    } else {
+      currentCell += char;
+    }
+  }
+
+  // Add last cell and row
+  if (currentCell || currentRow.length > 0) {
+    currentRow.push(currentCell);
+    if (currentRow.some(cell => cell.trim() !== '')) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+}
 
 window.exportMenuItemsCSV = async function() {
   try {
